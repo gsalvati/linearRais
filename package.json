@@ -6,7 +6,8 @@
   "scripts": {
     "convert": "node tools/step2glb.mjs vendor/PTFE-PETG-examples public/models",
     "start": "node tools/serve.mjs",
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test \"test/*.test.mjs\"",
+    "check": "node tools/check-deploy.mjs"
   },
   "dependencies": {
     "manifold-3d": "^3.5.3",

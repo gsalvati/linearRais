@@ -166,6 +166,7 @@ sobre uma grade de 10 mm. Todas as medidas exibidas estão em milímetros.
 
 ```sh
 npm test
+npm run check https://seu.dominio    # confere um deploy contra os arquivos locais
 ```
 
 Vinte testes sobre as três camadas. Os que importam são os que prendem
@@ -185,6 +186,7 @@ juntos pega. Repondo a configuração antiga, 5 dos 6 testes de booleana falham.
 tools/step2glb.mjs      OpenCascade -> GLB + sidecar de features, por peça
 tools/inspect-step.mjs  o mesmo reconhecimento, no terminal
 tools/serve.mjs         servidor estático (GLB e WASM não carregam via file://)
+tools/check-deploy.mjs  compara o que está no ar com o que está no disco
 public/lib/step-features.js  reconhecimento de features no B-rep, por corpo
 public/lib/stretch.js        estiramento prismático
 public/lib/holes.js          booleana de malha sobre manifold-3d
@@ -199,3 +201,6 @@ vendor/PTFE-PETG-examples/  cópia do repositório de origem
 
 Peças e arquivos `.step` originais são da Printabot. three.js é MIT;
 o OpenCascade usa LGPL-2.1 com exceção de linking (ver `public/vendor/occt/license.occt.txt`).
+
+Para publicar, ver [DEPLOY.md](DEPLOY.md) — inclusive o modo como isto quebra
+sem nenhum arquivo faltando.
