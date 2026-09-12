@@ -22,6 +22,7 @@ const state = {
   layout: 'origin',
   originBounds: null,        // extensao do conjunto nas coordenadas do CAD
   focus: null,               // slug da peca que o painel de medidas edita
+  solid: 0,                  // corpo em foco dentro dessa peca
   uniform: true,             // escala proporcional nos tres eixos
   editMode: 'scale',         // painel ativo: 'scale' ou 'stretch'
   show: { edges: true, wireframe: false, bbox: false, grid: true, spin: false },
@@ -179,28 +180,77 @@ function sourceOf(mesh) {
   return mesh.userData.source;
 }
 
-// Cada corpo do .step vira uma malha no glTF, mas as duas listas nao vem na
-// mesma ordem — o pareamento e pela caixa, que e o que as duas tem em comum.
+// Cada corpo do .step vira uma malha no glTF; o pareamento é feito em
+// linkSolids e consultado por aqui.
 function meshForBody(entry, body) {
   if (entry.meshes.length === 1) return entry.meshes[0];
+  return entry.solids?.find((solid) => solid.body === body)?.mesh ?? null;
+}
 
-  const target = [0, 1, 2].map((a) => (body.box.min[a] + body.box.max[a]) / 2);
-  let best = null;
-  let bestDistance = Infinity;
+// Emparelha cada corpo reconhecido com a sua malha. E o que permite selecionar,
+// destacar, estirar e furar um corpo de cada vez em vez da peca inteira.
+function linkSolids(entry, features) {
+  if (entry.solids || !features) return entry.solids ?? null;
 
-  for (const mesh of entry.meshes) {
+  // Pareamento global, do par mais próximo para o mais distante. Escolher o
+  // vizinho de cada corpo isoladamente deixa corpos disputando a mesma malha e
+  // outros sem nenhuma — e quem fica sem par não se move nem muda de cor.
+  const centerOf = (box) => [0, 1, 2].map((a) => (box.min[a] + box.max[a]) / 2);
+  const meshCenter = (mesh) => {
     if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
-    const box = mesh.geometry.boundingBox;
-    const distance = Math.hypot(
-      ...[0, 1, 2].map((a) => (box.min.getComponent(a) + box.max.getComponent(a)) / 2 - target[a]),
-    );
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      best = mesh;
+    const { min, max } = mesh.geometry.boundingBox;
+    return [0, 1, 2].map((a) => (min.getComponent(a) + max.getComponent(a)) / 2);
+  };
+
+  const candidates = [];
+  for (const [bodyIndex, body] of features.bodies.entries()) {
+    const target = centerOf(body.box);
+    // Tolerância proporcional ao corpo. Um corpo degenerado — o MGN9 tem seis
+    // com espessura zero — tem o centro deslocado meia espessura da malha, e
+    // um limite fixo de 1 mm os deixaria de fora do pareamento.
+    const reach = Math.max(2, 0.1 * Math.hypot(...body.box.size));
+    for (const mesh of entry.meshes) {
+      const center = meshCenter(mesh);
+      candidates.push({
+        bodyIndex,
+        mesh,
+        reach,
+        distance: Math.hypot(...[0, 1, 2].map((a) => center[a] - target[a])),
+      });
     }
   }
-  // Um milimetro de tolerancia: corpos distintos ficam muito mais longe que isso.
-  return bestDistance < 1 ? best : null;
+  candidates.sort((a, b) => a.distance - b.distance);
+
+  const paired = new Map();
+  const takenMeshes = new Set();
+  for (const candidate of candidates) {
+    if (paired.has(candidate.bodyIndex) || takenMeshes.has(candidate.mesh)) continue;
+    if (candidate.distance > candidate.reach) continue;
+    paired.set(candidate.bodyIndex, candidate.mesh);
+    takenMeshes.add(candidate.mesh);
+  }
+
+  entry.solids = features.bodies.map((body, bodyIndex) => ({
+    body,
+    mesh: paired.get(bodyIndex) ?? null,
+    holder: new THREE.Group(),
+    stretch: null,
+    holeEdit: null,
+  }));
+
+  // Cada corpo ganha um grupo proprio: e o que deixa "Separado" afasta-los.
+  for (const solid of entry.solids) {
+    if (!solid.mesh) continue;
+    solid.holder.add(solid.mesh);
+    entry.cadRoot.add(solid.holder);
+  }
+  return entry.solids;
+}
+
+function focusedSolid(entry) {
+  const solids = entry?.solids;
+  if (!solids?.length) return null;
+  return solids[Math.min(state.solid, solids.length - 1)] ?? solids[0];
 }
 
 // Troca a geometria de uma malha depois de uma booleana e reancora o estiramento.
@@ -263,6 +313,7 @@ async function addPart(part) {
   helpers.add(built.box);
   state.active.set(part.slug, built);
   state.focus = part.slug;
+  state.solid = 0;
 }
 
 function removePart(slug) {
@@ -307,14 +358,70 @@ function activeBounds() {
   return target;
 }
 
+// Deslocamento em coordenadas de mundo aplicado a um grupo que vive dentro do
+// cadRoot: la o eixo Y do CAD aponta para -Z do mundo, e o Z para +Y.
+const toCadOffset = (x, y, z) => [x, -z, y];
+
+function spreadSolids(entry) {
+  const solids = entry.solids.filter((solid) => solid.mesh);
+  if (solids.length < 2) return;
+
+  const gap = 12;
+  const spans = solids.map((solid) => {
+    const box = new THREE.Box3()
+      .copy(solid.mesh.geometry.boundingBox)
+      .applyMatrix4(solid.mesh.matrixWorld);
+    return { solid, box, width: box.max.x - box.min.x };
+  });
+
+  const total = spans.reduce((sum, s) => sum + s.width, 0) + gap * (spans.length - 1);
+  let cursor = -total / 2;
+  for (const span of spans) {
+    const center = span.box.getCenter(_center);
+    span.solid.holder.position.set(
+      ...toCadOffset(cursor + span.width / 2 - center.x, -span.box.min.y, -center.z),
+    );
+    cursor += span.width + gap;
+  }
+}
+
+// Num arquivo com varios corpos, o que esta em foco fica na cor da peca e o
+// resto vai para cinza. Transparencia foi a primeira tentativa e nao serve:
+// vinte e dois corpos translucidos sobrepostos viram sopa.
+const RESTING = 0x59626e;
+
+function paintFocus(entry) {
+  if (!entry.solids || entry.solids.length < 2) return;
+  const focus = focusedSolid(entry);
+
+  for (const solid of entry.solids) {
+    if (!solid.mesh) continue;
+    const on = solid === focus;
+    solid.mesh.material.color.setHex(on ? entry.color : RESTING);
+    solid.mesh.material.emissive.setHex(on ? 0x1d2836 : 0x000000);
+    for (const line of solid.mesh.children) {
+      if (line.isLineSegments) line.material.opacity = on ? 0.5 : 0.2;
+    }
+  }
+}
+
 function applyLayout() {
   const entries = [...state.active.values()];
-  for (const entry of entries) entry.holder.position.set(0, 0, 0);
+  for (const entry of entries) {
+    entry.holder.position.set(0, 0, 0);
+    for (const solid of entry.solids ?? []) solid.holder.position.set(0, 0, 0);
+  }
   world.position.set(0, 0, 0);
   world.updateMatrixWorld(true);
 
   // Medida util e sempre a do conjunto montado, mesmo quando ele e espalhado.
   state.originBounds = entries.length ? activeBounds() : null;
+
+  // Uma peca com varios corpos espalha os corpos; varias pecas espalham pecas.
+  if (state.layout === 'spread' && entries.length === 1 && entries[0].solids?.length > 1) {
+    world.updateMatrixWorld(true);
+    spreadSolids(entries[0]);
+  }
 
   if (state.layout === 'spread' && entries.length > 1) {
     const gap = 12;
@@ -540,10 +647,13 @@ function featuresArePlaced(entry, features) {
 async function syncFeatures(entry) {
   const features = await featuresFor(entry.part);
   if (focusedEntry() !== entry) return;
+  linkSolids(entry, features);
 
-  if (varsRenderedFor !== entry.part.slug) {
+  paintFocus(entry);
+
+  if (varsRenderedFor !== `${entry.part.slug}:${state.solid}`) {
     renderVars(entry, features);
-    varsRenderedFor = entry.part.slug;
+    varsRenderedFor = `${entry.part.slug}:${state.solid}`;
   }
   if (state.editMode === 'stretch') {
     refreshStretchPanel(entry, features);
@@ -588,18 +698,16 @@ document.getElementById('reset-scale').addEventListener('click', async () => {
   const entry = focusedEntry();
   if (!entry) return;
   const features = featureCache.get(entry.part.slug);
-  const found = findPattern(features, entry.holeEdit?.patternId);
+  const found = findPattern(features, holeOwner(entry).holeEdit?.patternId);
 
   entry.scaleNode.scale.set(1, 1, 1);
-  if (entry.stretch) entry.stretch.delta = 0;
+  resetStretch(entry);
 
   // Desfaz a booleana voltando o padrao aos parametros do arquivo — como tudo
   // e refeito a partir da geometria original, o resultado e a peca de origem.
   if (found) {
-    entry.holeEdit = editFor(found.pattern);
+    holeOwner(entry).holeEdit = editFor(found.pattern);
     await applyHoleEdit(entry, features);
-  } else if (entry.stretch) {
-    applyStretch(entry);
   }
 
   applyLayout();
@@ -911,12 +1019,13 @@ const AXIS_LABEL = ['X', 'Y', 'Z'];
 
 // Monta as linhas do painel a partir das features, ja agrupadas pelo tipo de
 // coisa que sao — que e como se pensa a peca, nao como o STEP a descreve.
-function buildRows(analysis, holeEdit = null) {
+function buildRows(analysis, editOf = () => null) {
   const rows = [];
   const many = analysis.bodies.length > 1;
   const prefix = (body, group) => (many ? `${body.name} · ${group}` : group);
 
   for (const body of analysis.bodies) {
+    const holeEdit = editOf(body);
     const { box } = body;
     for (const [axis, label] of [[0, 'largura_x'], [1, 'comprimento_y'], [2, 'altura_z']]) {
       rows.push({
@@ -960,20 +1069,27 @@ function buildRows(analysis, holeEdit = null) {
 
     // Furos fora de padrao entram agrupados por diametro: e assim que se pergunta
     // "quantos furos de 4 mm tem esta peca", e nao um a um.
+    // Canal e furo entram em baldes separados: cilindro côncavo com o eixo fora
+    // do material é guia de trilho, não furo, e misturar confunde a leitura.
     const byDiameter = new Map();
     for (const hole of body.holes) {
       if (hole.patternId) continue;
-      byDiameter.set(hole.diameter, [...(byDiameter.get(hole.diameter) ?? []), hole]);
+      const key = `${hole.diameter}|${hole.groove ? 'canal' : 'furo'}`;
+      byDiameter.set(key, [...(byDiameter.get(key) ?? []), hole]);
     }
 
-    for (const [diameter, holes] of [...byDiameter].sort((a, b) => b[0] - a[0])) {
+    const ordered = [...byDiameter.values()].sort((a, b) => b[0].diameter - a[0].diameter);
+    for (const holes of ordered) {
+      const diameter = holes[0].diameter;
       const axis = holes[0].axis.findIndex((v) => Math.abs(v) > 0.9);
       const depth = Math.max(...holes.map((h) => h.depth));
       const wall = holes.map((h) => h.wall).filter((w) => w !== null).sort((a, b) => a - b)[0];
+      // Canal é cilindro côncavo com o eixo fora do material — guia de trilho,
+      // rasgo lateral. Misturar com furo confunde a leitura da peça.
       rows.push({
-        group: prefix(body, 'Furos avulsos'),
-        id: `${body.bodyIndex}-dia-${diameter}`,
-        fallback: `furo_${diameter}mm`,
+        group: prefix(body, holes.every((h) => h.groove) ? 'Canais' : 'Furos avulsos'),
+        id: `${body.bodyIndex}-dia-${diameter}-${holes[0].groove ? 'canal' : 'furo'}`,
+        fallback: holes[0].groove ? `canal_${diameter}mm` : `furo_${diameter}mm`,
         value: `${holes.length} × Ø${diameter}`,
         detail:
           `eixo ${AXIS_LABEL[axis] ?? 'oblíquo'} · prof ${fmt(depth)} mm` +
@@ -1045,7 +1161,10 @@ function renderVars(entry, features) {
   const names = savedNames(entry.part.slug);
   let currentGroup = null;
 
-  for (const row of buildRows(features, entry.holeEdit)) {
+  const editOf = (body) =>
+    entry.solids?.find((solid) => solid.body === body)?.holeEdit ?? entry.holeEdit ?? null;
+
+  for (const row of buildRows(features, editOf)) {
     if (row.group !== currentGroup) {
       currentGroup = row.group;
       const title = document.createElement('div');
@@ -1154,10 +1273,10 @@ function showHighlight(entry, features, target) {
 
 // Caixa da peca no espaco do CAD. Os nos do glTF nao tem transformacao, entao a
 // caixa da geometria ja esta nas coordenadas em que o estiramento opera.
-function cadBounds(entry) {
+function cadBounds(entry, meshes = entry.meshes) {
   const min = [Infinity, Infinity, Infinity];
   const max = [-Infinity, -Infinity, -Infinity];
-  for (const mesh of entry.meshes) {
+  for (const mesh of meshes) {
     if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
     const { min: lo, max: hi } = mesh.geometry.boundingBox;
     for (const axis of [0, 1, 2]) {
@@ -1168,25 +1287,45 @@ function cadBounds(entry) {
   return { min, max };
 }
 
+// Malhas que uma operacao alcanca: o corpo em foco quando ha varios, a peca
+// inteira quando so ha um.
+function targetMeshes(entry) {
+  const solid = focusedSolid(entry);
+  return solid?.mesh && entry.solids.length > 1 ? [solid.mesh] : entry.meshes;
+}
+
 function stretchState(entry, features) {
-  if (entry.stretch) return entry.stretch;
-  const base = cadBounds(entry);
+  const solid = entry.solids?.length > 1 ? focusedSolid(entry) : entry;
+  if (solid.stretch) return solid.stretch;
+  const base = cadBounds(entry, targetMeshes(entry));
   // Comeca pelo eixo mais longo: e quase sempre o que se quer alongar.
   const longest = [0, 1, 2].reduce((a, b) => (base.max[b] - base.min[b] > base.max[a] - base.min[a] ? b : a));
-  entry.stretch = {
+  // Corte sugerido a partir dos furos do corpo em foco, nao de todos.
+  const holes = entry.solids?.length > 1 ? (solid.body?.holes ?? []) : allHoles(features);
+  solid.stretch = {
     axis: longest,
-    station: suggestStation(allHoles(features), longest, base.min[longest], base.max[longest]),
+    station: suggestStation(holes, longest, base.min[longest], base.max[longest]),
     delta: 0,
     base,
   };
-  return entry.stretch;
+  return solid.stretch;
+}
+
+// O estado de estiramento vive no corpo quando ha varios, na peca quando nao.
+function stretchOwner(entry) {
+  return entry.solids?.length > 1 ? focusedSolid(entry) ?? entry : entry;
 }
 
 function applyStretch(entry) {
-  const { axis, station, delta } = entry.stretch;
+  const owner = stretchOwner(entry);
+  if (!owner.stretch) return;
+  const { axis, station, delta } = owner.stretch;
   ownGeometry(entry);
 
-  for (const node of [...entry.meshes, ...entry.edges]) {
+  const meshes = targetMeshes(entry);
+  const lines = meshes.flatMap((mesh) => mesh.children.filter((c) => c.isLineSegments));
+
+  for (const node of [...meshes, ...lines]) {
     const attribute = node.geometry.attributes.position;
     attribute.array.set(node.userData.pristine);
     if (delta !== 0) stretchPositions(attribute.array, axis, station, delta);
@@ -1200,17 +1339,20 @@ function applyStretch(entry) {
 }
 
 function resetStretch(entry) {
-  if (!entry.stretch) return;
-  entry.stretch.delta = 0;
+  const owner = stretchOwner(entry);
+  if (!owner.stretch) return;
+  owner.stretch.delta = 0;
   applyStretch(entry);
 }
 
 // Plano indicando onde o corte acontece, enquanto o painel esta aberto.
 function showStationPlane(entry) {
   clearHighlight(entry);
-  if (state.editMode !== 'stretch' || !entry.stretch) return;
+  if (state.editMode !== 'stretch') return;
+  const owner = stretchOwner(entry);
+  if (!owner.stretch) return;
 
-  const { axis, station, base } = entry.stretch;
+  const { axis, station, base } = owner.stretch;
   const others = [0, 1, 2].filter((a) => a !== axis);
   const size = others.map((a) => (base.max[a] - base.min[a]) * 1.25);
 
@@ -1255,7 +1397,8 @@ function refreshStretchPanel(entry, features) {
   el.stretchSlider.step = Math.max(0.1, (base.max[axis] - base.min[axis]) / 400);
   el.stretchSlider.value = station;
 
-  const conflicts = conflictsAt(allHoles(features), axis, station);
+  const holes = entry.solids?.length > 1 ? (focusedSolid(entry)?.body.holes ?? []) : allHoles(features);
+  const conflicts = conflictsAt(holes, axis, station);
   if (conflicts.length) {
     el.stretchHint.className = 'hint warn';
     el.stretchHint.textContent =
@@ -1298,13 +1441,15 @@ document.addEventListener('click', (event) => {
 for (const button of document.querySelectorAll('[data-stretch-axis]')) {
   button.addEventListener('click', () => {
     const entry = focusedEntry();
-    if (!entry?.stretch) return;
+    const owner = entry && stretchOwner(entry);
+    if (!owner?.stretch) return;
     resetStretch(entry);
     const axis = Number(button.dataset.stretchAxis);
     const features = featureCache.get(entry.part.slug);
-    entry.stretch.axis = axis;
-    entry.stretch.station = suggestStation(
-      allHoles(features), axis, entry.stretch.base.min[axis], entry.stretch.base.max[axis],
+    const holes = entry.solids?.length > 1 ? (focusedSolid(entry)?.body.holes ?? []) : allHoles(features);
+    owner.stretch.axis = axis;
+    owner.stretch.station = suggestStation(
+      holes, axis, owner.stretch.base.min[axis], owner.stretch.base.max[axis],
     );
     applyStretch(entry);
     fitView();
@@ -1314,21 +1459,23 @@ for (const button of document.querySelectorAll('[data-stretch-axis]')) {
 
 el.stretchLength.addEventListener('input', () => {
   const entry = focusedEntry();
-  if (!entry?.stretch) return;
+  const owner = entry && stretchOwner(entry);
+  if (!owner?.stretch) return;
   const target = parseNumber(el.stretchLength.value);
-  const { axis, base } = entry.stretch;
+  const { axis, base } = owner.stretch;
   const length = base.max[axis] - base.min[axis];
   if (!(target > 0)) return;
-  entry.stretch.delta = target - length;
+  owner.stretch.delta = target - length;
   applyStretch(entry);
   updateInfo();
 });
 
 function setStation(value) {
   const entry = focusedEntry();
-  if (!entry?.stretch || !Number.isFinite(value)) return;
-  const { axis, base } = entry.stretch;
-  entry.stretch.station = Math.min(Math.max(value, base.min[axis]), base.max[axis]);
+  const owner = entry && stretchOwner(entry);
+  if (!owner?.stretch || !Number.isFinite(value)) return;
+  const { axis, base } = owner.stretch;
+  owner.stretch.station = Math.min(Math.max(value, base.min[axis]), base.max[axis]);
   applyStretch(entry);
   updateInfo();
 }
@@ -1339,10 +1486,17 @@ el.stretchSlider.addEventListener('input', () => setStation(Number(el.stretchSli
 
 /* ============================================= refazer o padrao de furos */
 
+// Igual ao estiramento: o estado vive no corpo quando ha varios.
+function holeOwner(entry) {
+  return entry.solids?.length > 1 ? focusedSolid(entry) ?? entry : entry;
+}
+
 function holeEditState(entry, features) {
-  if (entry.holeEdit) return entry.holeEdit;
-  const pattern = allPatterns(features)[0];
-  return pattern ? (entry.holeEdit = editFor(pattern)) : null;
+  const owner = holeOwner(entry);
+  if (owner.holeEdit) return owner.holeEdit;
+  // Quando ha corpos, o padrao oferecido e o do corpo em foco.
+  const pattern = owner.body ? owner.body.patterns[0] : allPatterns(features)[0];
+  return pattern ? (owner.holeEdit = editFor(pattern)) : null;
 }
 
 const editFor = (pattern) => ({
@@ -1358,7 +1512,7 @@ const editFor = (pattern) => ({
 // parametros, nao pela ultima edicao, entao voltar aos valores do arquivo
 // devolve a peca de origem.
 async function applyHoleEdit(entry, features) {
-  const edit = entry.holeEdit;
+  const edit = holeOwner(entry).holeEdit;
   const found = findPattern(features, edit?.patternId);
   if (!found) return;
 
@@ -1374,7 +1528,7 @@ async function applyHoleEdit(entry, features) {
     edit.diameter === pattern.diameter;
 
   const finish = () => {
-    if (entry.stretch) applyStretch(entry);
+    if (stretchOwner(entry).stretch) applyStretch(entry);
     else {
       recomputeBaseSize(entry);
       applyLayout();
@@ -1428,9 +1582,11 @@ function totalTriangles(entry) {
 }
 
 function refreshHolePanel(entry, features) {
-  const patterns = allPatterns(features);
+  const owner = holeOwner(entry);
+  const all = allPatterns(features);
+  const many = features.bodies.length > 1;
 
-  if (patterns.length === 0) {
+  if (all.length === 0) {
     el.holePattern.hidden = true;
     el.holeHint.className = 'hint';
     el.holeHint.textContent =
@@ -1439,11 +1595,9 @@ function refreshHolePanel(entry, features) {
     return;
   }
 
-  const edit = holeEditState(entry, features);
-  const { body, pattern } = findPattern(features, edit.patternId);
-  const many = features.bodies.length > 1;
-
-  el.holePattern.hidden = patterns.length < 2;
+  // O seletor lista os padrões do arquivo inteiro, mesmo quando o corpo em foco
+  // não tem nenhum: é por ele que se salta de um corpo para outro.
+  el.holePattern.hidden = all.length < 2 && !many;
   el.holePattern.innerHTML = features.bodies
     .flatMap((b) =>
       b.patterns.map(
@@ -1453,6 +1607,19 @@ function refreshHolePanel(entry, features) {
       ),
     )
     .join('');
+
+  const patterns = owner.body ? owner.body.patterns : all;
+  if (patterns.length === 0) {
+    el.holeHint.className = 'hint';
+    el.holeHint.textContent =
+      `${owner.body.name} não tem padrão linear de furos. Escolha outro acima, ou clique ` +
+      'noutro corpo na cena.';
+    for (const [input] of HOLE_FIELDS) input.value = '';
+    return;
+  }
+
+  const edit = holeEditState(entry, features);
+  const { body, pattern } = findPattern(features, edit.patternId);
   el.holePattern.value = edit.patternId;
 
   const fields = [
@@ -1508,7 +1675,7 @@ for (const [input, key] of HOLE_FIELDS) {
   input.addEventListener('change', async () => {
     const entry = focusedEntry();
     const features = featureCache.get(entry?.part.slug);
-    if (!entry?.holeEdit || !features) return;
+    if (!holeOwner(entry ?? {})?.holeEdit || !features) return;
 
     const value = key === 'count' ? Math.round(parseNumber(input.value)) : parseNumber(input.value);
     const valid = key === 'edge' ? value >= 0 : value > 0;
@@ -1517,7 +1684,7 @@ for (const [input, key] of HOLE_FIELDS) {
       return;
     }
 
-    entry.holeEdit[key] = value;
+    holeOwner(entry).holeEdit[key] = value;
     await applyHoleEdit(entry, features);
     varsRenderedFor = null;
     updateInfo();
@@ -1529,9 +1696,69 @@ el.holePattern.addEventListener('change', () => {
   const features = featureCache.get(entry?.part.slug);
   const found = findPattern(features, el.holePattern.value);
   if (!entry || !found) return;
-  entry.holeEdit = editFor(found.pattern);
-  refreshHolePanel(entry, features);
+
+  // Escolher um padrão traz o corpo dele para o foco: acende na cena, e o
+  // estiramento e a edição passam a valer para ele.
+  const index = entry.solids?.findIndex((solid) => solid.body === found.body) ?? -1;
+  if (index >= 0) state.solid = index;
+
+  holeOwner(entry).holeEdit = editFor(found.pattern);
+  varsRenderedFor = null;
+  paintFocus(entry);
+  updateInfo();
+  showPatternHighlight(entry, features, found.pattern);
 });
+
+// Destaque do padrão escolhido, para não ficar dúvida sobre o que vai mudar.
+function showPatternHighlight(entry, features, pattern) {
+  if (!featuresArePlaced(entry, features)) return;
+  showHighlight(entry, features, { kind: 'holes', ids: pattern.holeIds });
+}
+
+/* ------------------------------------- selecionar clicando na peça */
+
+const raycaster = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+let pressedAt = null;
+
+el.canvas.addEventListener('pointerdown', (event) => {
+  pressedAt = [event.clientX, event.clientY];
+});
+
+el.canvas.addEventListener('pointerup', (event) => {
+  if (!pressedAt) return;
+  const travelled = Math.hypot(event.clientX - pressedAt[0], event.clientY - pressedAt[1]);
+  pressedAt = null;
+  // Orbitar a camera tambem solta um pointerup: so conta como clique se o
+  // ponteiro praticamente nao andou.
+  if (travelled < 4) selectAt(event);
+});
+
+function selectAt(event) {
+  const rect = el.canvas.getBoundingClientRect();
+  pointer.set(
+    ((event.clientX - rect.left) / rect.width) * 2 - 1,
+    -((event.clientY - rect.top) / rect.height) * 2 + 1,
+  );
+  raycaster.setFromCamera(pointer, camera);
+
+  const meshes = [...state.active.values()].flatMap((entry) => entry.meshes);
+  const hit = raycaster.intersectObjects(meshes, false)[0];
+  if (!hit) return;   // clique no vazio nao desfaz a selecao
+
+  for (const [slug, entry] of state.active) {
+    if (!entry.meshes.includes(hit.object)) continue;
+    const index = entry.solids?.findIndex((solid) => solid.mesh === hit.object) ?? -1;
+
+    state.focus = slug;
+    state.solid = index >= 0 ? index : 0;
+    // O padrao em edicao pertence ao corpo antigo: deixa o painel reabrir.
+    varsRenderedFor = null;
+    syncList();
+    updateInfo();
+    break;
+  }
+}
 
 /* ------------------------------------------------------------- laço */
 

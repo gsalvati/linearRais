@@ -92,13 +92,50 @@ test('montagem é medida corpo a corpo', () => {
   assert.equal(analysis.bodies.length, 22);
 
   const rail = analysis.bodies[0];
-  assert.deepEqual(rail.box.size, [6.5, 9.8, 251]);
+  assert.deepEqual(rail.box.size, [9.8, 251, 6.5]);
 
   const six = rail.patterns.find((p) => p.diameter === 6);
   assert.equal(six.count, 13);
   assert.equal(six.pitch, 20);
   assert.equal(six.edgeStart, 5.5);
-  assert.equal(six.edgeStart + (six.count - 1) * six.pitch + six.edgeEnd, rail.box.size[2]);
+  assert.equal(
+    six.edgeStart + (six.count - 1) * six.pitch + six.edgeEnd,
+    rail.box.size[six.axisIndex],
+  );
+});
+
+test('montagem: os corpos são posicionados como na malha', () => {
+  // O arquivo define cada corpo no seu próprio sistema e o coloca por
+  // ITEM_DEFINED_TRANSFORMATION. Sem seguir essa cadeia, as medidas saem certas
+  // e as posições não batem com nada — 423 × 631 × 495 em vez de 159 × 251 × 20.
+  const analysis = analyzeStep(readStep(MGN9));
+  assert.deepEqual(analysis.box.size, [159.37, 251, 20.03]);
+
+  // E cada furo tem que cair dentro do corpo a que pertence. Canal não conta:
+  // as guias laterais do trilho são cilindros côncavos com o eixo fora do
+  // material, e é isso que os separa de um furo.
+  for (const body of analysis.bodies) {
+    for (const hole of body.holes.filter((h) => !h.groove)) {
+      for (const axis of [0, 1, 2]) {
+        assert.ok(
+          hole.center[axis] >= body.box.min[axis] - 0.01 &&
+            hole.center[axis] <= body.box.max[axis] + 0.01,
+          `${hole.id} fora de ${body.name} no eixo ${axis}`,
+        );
+      }
+    }
+  }
+});
+
+test('canal lateral não é furo nem entra em padrão', () => {
+  const analysis = analyzeStep(readStep(MGN9));
+  const rail = analysis.bodies[0];
+  const grooves = rail.holes.filter((h) => h.groove);
+
+  // As duas guias do MGN9, uma de cada lado, correndo ao longo do trilho.
+  assert.equal(grooves.length, 2);
+  assert.ok(grooves.every((g) => Math.abs(g.axis[1]) > 0.99));
+  assert.ok(grooves.every((g) => !g.patternId));
 });
 
 test('arquivo sem geometria reconhecível devolve null', () => {

@@ -56,6 +56,8 @@ Limites que ficam:
 - Peças com vários corpos no mesmo arquivo ficam de fora — a booleana precisa
   de um sólido só.
 - Só padrão linear. Padrão circular ou furo avulso não são editáveis ainda.
+- Canal — cilindro côncavo com o eixo fora do material, como a guia lateral de
+  um trilho — é reconhecido e listado à parte, mas não é editável.
 
 - A favor: leve, roda no visualizador atual, resposta imediata, nada sai da máquina.
 - Contra: saída só em STL. Furo novo vira polígono de N lados, não cilindro.
@@ -92,12 +94,11 @@ Valem para os três caminhos:
   `cover.step` e `Linear_rail.step` têm dezenas.
 - ~~Arquivos multi-corpo confundem as medidas de borda~~ — resolvido: o
   analisador segmenta por `MANIFOLD_SOLID_BREP` e mede cada corpo separadamente.
-- **Montagens ainda não são posicionadas.** Um `.step` pode definir cada corpo no
-  seu próprio sistema e colocá-lo por `ITEM_DEFINED_TRANSFORMATION` — o MGN9 tem
-  21 delas. O OpenCascade aplica ao tesselar; o leitor de features não, porque a
-  cadeia passa por entidades complexas (`#N = ( A(...) B(...) )`), que o parser
-  ainda não reconhece. As medidas de cada corpo saem certas no referencial dele,
-  mas as posições não batem com a malha, então destaque no 3D e edição de furos
-  ficam desligados nesses arquivos, com aviso na interface.
+- ~~Montagens ainda não são posicionadas~~ — resolvido: o parser lê entidades
+  complexas (`#N = ( A(...) B(...) )`) e compõe a cadeia
+  `REPRESENTATION_RELATIONSHIP` → `ITEM_DEFINED_TRANSFORMATION`, seguindo os
+  apelidos de `SHAPE_REPRESENTATION_RELATIONSHIP`. A conferência é objetiva: a
+  caixa do arquivo passou de 423 × 631 × 495 para 159,37 × 251 × 20,03, que é o
+  que a malha mede.
 - Furo atravessando superfície curva é bem mais difícil de reposicionar que num plano.
 - Rosca modelada vira geometria helicoidal que nenhuma heurística entende.

@@ -53,7 +53,45 @@ function parseEntities(source) {
   for (const [, id, type, args] of data.matchAll(/#(\d+)\s*=\s*([A-Z_0-9]+)\s*\(([\s\S]*?)\)\s*;/g)) {
     entities.set(Number(id), { type, args: splitArgs(args) });
   }
+
+  // Entidades complexas — `#78 = ( A(...) B(...) C(...) );` — nao tem um tipo
+  // antes do parentese e escapam do padrao acima. Sao elas que carregam a
+  // estrutura de montagem, entao sem ler isto os corpos ficam sem posicao.
+  for (const [, id, inner] of data.matchAll(/#(\d+)\s*=\s*\(([\s\S]*?)\)\s*;/g)) {
+    const parts = [];
+    for (const [, type, args] of inner.matchAll(/([A-Z_0-9]+)\s*\(([\s\S]*?)\)\s*(?=[A-Z_]|$)/g)) {
+      parts.push({ type, args: splitArgs(args) });
+    }
+    if (parts.length) entities.set(Number(id), { type: 'COMPLEX', parts, args: [] });
+  }
+
   return entities;
+}
+
+/* --------------------------------------------------- montagem: transformacoes */
+
+// Transformacao rigida: rotacao em linhas + translacao.
+const IDENTITY = { rows: [[1, 0, 0], [0, 1, 0], [0, 0, 1]], t: [0, 0, 0] };
+
+const applyPoint = (T, p) => T.rows.map((row, i) => dot(row, p) + T.t[i]);
+const applyDirection = (T, d) => T.rows.map((row) => dot(row, d));
+
+// (a ∘ b)(p) = a(b(p))
+function compose(a, b) {
+  const rows = a.rows.map((row) => [0, 1, 2].map((j) => row.reduce((sum, v, k) => sum + v * b.rows[k][j], 0)));
+  return { rows, t: applyPoint(a, b.t) };
+}
+
+// Rotacao ortonormal: a inversa e a transposta.
+function invert(T) {
+  const rows = [0, 1, 2].map((i) => [0, 1, 2].map((j) => T.rows[j][i]));
+  return { rows, t: rows.map((row) => -dot(row, T.t)) };
+}
+
+function unit(v, fallback) {
+  if (!v) return fallback;
+  const length = norm(v);
+  return length < 1e-12 ? fallback : v.map((c) => c / length);
 }
 
 /* ------------------------------------------------------------ percurso */
@@ -75,6 +113,90 @@ export function analyzeStep(source) {
     const p = ref(arg);
     return { origin: point(p.args[1]), axis: triple(ref(p.args[2])) };
   };
+
+  // Matriz de um AXIS2_PLACEMENT_3D: Z pelo eixo, X pela direcao de referencia
+  // ortogonalizada, Y pelo produto vetorial. Os dois campos sao opcionais.
+  function matrixOf(arg) {
+    const p = ref(arg);
+    if (!p) return IDENTITY;
+    const origin = point(p.args[1]);
+    const z = unit(p.args[2] === '$' ? null : triple(ref(p.args[2])), [0, 0, 1]);
+    const reference = p.args[3] && p.args[3] !== '$' ? triple(ref(p.args[3])) : null;
+
+    let x = unit(reference ? sub(reference, z.map((c) => c * dot(reference, z))) : null, null);
+    if (!x) {
+      const helper = Math.abs(z[0]) < 0.9 ? [1, 0, 0] : [0, 1, 0];
+      x = unit(sub(helper, z.map((c) => c * dot(helper, z))), [1, 0, 0]);
+    }
+    const y = [
+      z[1] * x[2] - z[2] * x[1],
+      z[2] * x[0] - z[0] * x[2],
+      z[0] * x[1] - z[1] * x[0],
+    ];
+    // Colunas x, y, z — guardadas por linhas.
+    return { rows: [0, 1, 2].map((i) => [x[i], y[i], z[i]]), t: origin };
+  }
+
+  // Quem contem cada MANIFOLD_SOLID_BREP, e como cada representacao se encaixa
+  // na de cima. Compondo a cadeia chega-se a posicao final do corpo.
+  const representationOf = new Map();
+  for (const entity of entities.values()) {
+    if (!/SHAPE_REPRESENTATION$/.test(entity.type)) continue;
+    for (const item of refs(entity.args[1])) representationOf.set(item, entity);
+  }
+
+  const parentOf = new Map();
+  for (const entity of entities.values()) {
+    if (entity.type !== 'COMPLEX') continue;
+    const relation = entity.parts.find((part) => part.type === 'REPRESENTATION_RELATIONSHIP');
+    const withTransform = entity.parts.find(
+      (part) => part.type === 'REPRESENTATION_RELATIONSHIP_WITH_TRANSFORMATION',
+    );
+    if (!relation || !withTransform) continue;
+
+    const child = ref(relation.args[2]);
+    const parent = ref(relation.args[3]);
+    const transform = ref(withTransform.args[0]);
+    if (!child || !parent || transform?.type !== 'ITEM_DEFINED_TRANSFORMATION') continue;
+
+    // O par de eixos diz como o sistema do filho assenta no do pai.
+    parentOf.set(child, {
+      parent,
+      transform: compose(matrixOf(transform.args[3]), invert(matrixOf(transform.args[2]))),
+    });
+  }
+
+  // A mesma forma aparece sob mais de uma representacao: a ADVANCED_BREP, que
+  // contem o solido, e a SHAPE_REPRESENTATION do produto, que e quem a montagem
+  // posiciona. Um SHAPE_REPRESENTATION_RELATIONSHIP simples liga as duas sem
+  // transformar nada — e sem seguir esse apelido a cadeia morre no primeiro no.
+  const aliases = new Map();
+  const link = (a, b) => aliases.set(a, [...(aliases.get(a) ?? []), b]);
+  for (const entity of entities.values()) {
+    if (entity.type !== 'SHAPE_REPRESENTATION_RELATIONSHIP') continue;
+    const first = ref(entity.args[2]);
+    const second = ref(entity.args[3]);
+    if (!first || !second) continue;
+    link(first, second);
+    link(second, first);
+  }
+
+  function placementFor(solid) {
+    let representation = representationOf.get(solid);
+    let total = IDENTITY;
+    const seen = new Set();
+
+    while (representation && !seen.has(representation)) {
+      const candidates = [representation, ...(aliases.get(representation) ?? [])];
+      for (const candidate of candidates) seen.add(candidate);
+
+      const step = candidates.map((c) => parentOf.get(c)).find(Boolean);
+      if (!step) break;
+      total = compose(step.transform, total);
+      representation = step.parent;
+    }
+    return total;
+  }
 
   // Cada ADVANCED_FACE carrega a superficie e os vertices do seu contorno.
   const buildFace = (entity) => {
@@ -103,12 +225,14 @@ export function analyzeStep(source) {
   // a casca com as faces que lhe pertencem.
   const owner = new Map();
   const names = [];
+  const transforms = [];
   for (const entity of entities.values()) {
     if (entity.type !== 'MANIFOLD_SOLID_BREP') continue;
     const shell = ref(entity.args[1]);
     if (!shell) continue;
     const index = names.length;
     names.push(entity.args[0].replace(/'/g, '').trim() || `Corpo ${index + 1}`);
+    transforms.push(placementFor(entity));
     for (const face of refs(shell.args[1])) owner.set(face, index);
   }
 
@@ -119,6 +243,7 @@ export function analyzeStep(source) {
     const face = buildFace(entity);
     if (!face) continue;
     const index = owner.get(entity);
+    place(face, index === undefined ? IDENTITY : transforms[index]);
     if (index === undefined) loose.push(face);
     else grouped[index].push(face);
   }
@@ -130,6 +255,25 @@ export function analyzeStep(source) {
     grouped.push(loose);
   } else if (loose.length > 0) {
     grouped[0].push(...loose);
+  }
+
+  // Leva vertices e placements da superficie para o sistema da montagem, que e
+  // onde a malha tesselada esta. Sem isto as medidas de cada corpo saem certas
+  // mas as posicoes nao batem com nada.
+  function place(face, transform) {
+    // O placement da superficie precisa ir junto com os vertices: e dele que
+    // saem eixo do furo, normal do plano e raio do cone. Transformar so os
+    // vertices deixaria a caixa certa e os furos no lugar antigo.
+    const { type, args } = face.surface;
+    if (type === 'CYLINDRICAL_SURFACE' || type === 'CONICAL_SURFACE' || type === 'PLANE') {
+      const local = placement(args[1]);
+      face.place =
+        transform === IDENTITY
+          ? local
+          : { origin: applyPoint(transform, local.origin), axis: applyDirection(transform, local.axis) };
+    }
+    if (transform === IDENTITY) return;
+    face.vertices = face.vertices.map((vertex) => applyPoint(transform, vertex));
   }
 
   const bodies = grouped
@@ -160,7 +304,7 @@ export function analyzeStep(source) {
     const { type, args } = face.surface;
 
     if (type === 'CYLINDRICAL_SURFACE') {
-      const place = placement(args[1]);
+      const place = face.place;
       const radius = Number(args[2]);
       // Chave pelo eixo: direcao mais o ponto do eixo mais proximo da origem.
       const perpendicular = sub(place.origin, place.axis.map((c) => c * dot(place.origin, place.axis)));
@@ -183,7 +327,7 @@ export function analyzeStep(source) {
       }
       bucket.set(key, entry);
     } else if (type === 'CONICAL_SURFACE') {
-      const place = placement(args[1]);
+      const place = face.place;
       cones.push({
         diameter: round(Number(args[2]) * 2, 2),
         angle: round((Number(args[3]) * 180) / Math.PI, 1),
@@ -194,7 +338,7 @@ export function analyzeStep(source) {
         vertices: face.vertices,
       });
     } else if (type === 'PLANE') {
-      planes.push({ ...placement(args[1]), vertices: face.vertices });
+      planes.push({ ...face.place, vertices: face.vertices });
     }
   }
 
@@ -300,6 +444,12 @@ export function analyzeStep(source) {
         depth: round(hole.span[1] - hole.span[0], 6),
         wall: walls[0] ?? null,
         walls: walls.slice(0, 4),
+        // Cilindro concavo com o eixo fora do material nao e furo, e canal: as
+        // guias laterais do MGN9 caem aqui. Chamar isso de furo poluiria a lista
+        // e ofereceria editar um padrao que nao existe.
+        groove: [0, 1, 2].some(
+          (axis) => center[axis] < min[axis] - 0.05 || center[axis] > max[axis] + 0.05,
+        ),
         // Deslocamentos a partir do centro do furo, nao da origem do STEP.
         cones: (hole.cones ?? []).map((cone) => ({
           from: round(cone.from - middle, 6),
@@ -316,6 +466,7 @@ export function analyzeStep(source) {
   const patterns = [];
   const byFamily = new Map();
   for (const hole of holes) {
+    if (hole.groove) continue;
     const key = [hole.diameter, ...hole.axis.map((v) => round(Math.abs(v), 2))].join('|');
     byFamily.set(key, [...(byFamily.get(key) ?? []), hole]);
   }
