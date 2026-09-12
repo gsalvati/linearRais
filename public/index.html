@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>PTFE / PETG — Visualizador STEP</title>
+<link rel="stylesheet" href="style.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "./vendor/three/build/three.module.js",
+    "three/addons/": "./vendor/three/addons/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app">
+  <aside id="sidebar">
+    <header>
+      <h1>Trilhos lineares PTFE / PETG</h1>
+      <p class="src">Printabot &middot; <a href="https://github.com/Printabot/PTFE-PETG-examples/" target="_blank" rel="noreferrer">PTFE-PETG-examples</a></p>
+    </header>
+
+    <div id="parts" class="parts"></div>
+
+    <div class="drop-hint" id="drop-hint">
+      <strong>Arraste um .step aqui</strong>
+      <span>lido no navegador pelo OpenCascade (WASM)</span>
+    </div>
+
+    <footer>
+      <button id="select-none" class="ghost">Limpar seleção</button>
+      <button id="select-group" class="ghost">Selecionar grupo</button>
+    </footer>
+  </aside>
+
+  <main id="stage">
+    <div id="toolbar">
+      <div class="tool-group" role="group" aria-label="Vistas">
+        <button data-view="iso" class="active">Iso</button>
+        <button data-view="front">Frente</button>
+        <button data-view="side">Lado</button>
+        <button data-view="top">Topo</button>
+      </div>
+      <div class="tool-group" role="group" aria-label="Exibição">
+        <button data-toggle="edges" class="active" title="Arestas do modelo (E)">Arestas</button>
+        <button data-toggle="wireframe" title="Malha triangulada (W)">Malha</button>
+        <button data-toggle="bbox" title="Caixa envolvente (B)">Caixa</button>
+        <button data-toggle="grid" class="active" title="Grade de 10 mm (G)">Grade</button>
+      </div>
+      <div class="tool-group" role="group" aria-label="Arranjo">
+        <button data-layout="origin" class="active" title="Coordenadas originais do CAD">Montado</button>
+        <button data-layout="spread" title="Peças lado a lado">Separado</button>
+      </div>
+      <div class="tool-group">
+        <button data-toggle="spin" title="Girar (R)">Girar</button>
+        <button id="fit" title="Enquadrar (F)">Enquadrar</button>
+        <button id="shot" title="Salvar PNG">PNG</button>
+      </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <div id="status" class="status"></div>
+
+    <div id="info" class="info" hidden>
+      <div class="info-head">
+        <div class="info-title"></div>
+        <select id="focus" class="focus" hidden aria-label="Peça a editar"></select>
+      </div>
+
+      <div class="dims">
+        <label><span>Largura X</span><input type="text" inputmode="decimal" data-axis="0" /><em>mm</em></label>
+        <label><span>Altura Z</span><input type="text" inputmode="decimal" data-axis="1" /><em>mm</em></label>
+        <label><span>Profund. Y</span><input type="text" inputmode="decimal" data-axis="2" /><em>mm</em></label>
+      </div>
+
+      <label class="lock" title="Desmarque para esticar um eixo só. Escala não é paramétrica: furos, folgas e encaixes mudam junto."><input type="checkbox" id="uniform" checked /> Manter proporção <b id="scale-pct">100%</b></label>
+
+      <dl class="info-rows"></dl>
+
+      <div class="info-actions">
+        <button id="reset-scale" class="ghost">Tamanho original</button>
+        <button id="export-stl" class="ghost">Exportar STL</button>
+      </div>
+    </div>
+
+    <div id="overlay" class="overlay" hidden><div class="spinner"></div><span></span></div>
+  </main>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>
