@@ -23,6 +23,7 @@ const state = {
   originBounds: null,        // extensao do conjunto nas coordenadas do CAD
   focus: null,               // slug da peca que o painel de medidas edita
   solid: 0,                  // corpo em foco dentro dessa peca
+  allBodies: false,          // painel mostra todos os corpos ou so o em foco
   uniform: true,             // escala proporcional nos tres eixos
   editMode: 'scale',         // painel ativo: 'scale' ou 'stretch'
   show: { edges: true, wireframe: false, bbox: false, grid: true, spin: false },
@@ -232,10 +233,12 @@ function linkSolids(entry, features) {
     edits: {},
   }));
 
-  // Cada corpo ganha um grupo proprio: e o que deixa "Separado" afasta-los.
+  // Cada corpo ganha um grupo proprio: e o que deixa "Separado" afasta-los. O
+  // destaque entra junto, senao fica para tras quando o corpo se afasta.
   for (const solid of entry.solids) {
     if (!solid.mesh) continue;
-    solid.holder.add(solid.mesh);
+    solid.highlight = new THREE.Group();
+    solid.holder.add(solid.mesh, solid.highlight);
     entry.cadRoot.add(solid.holder);
   }
   return entry.solids;
@@ -1218,14 +1221,24 @@ function renderVars(entry, features) {
   const placed = featuresArePlaced(entry, features);
   const names = savedNames(entry.part.slug);
   const focus = focusedSolid(entry)?.body;
-  let currentGroup = null;
+  const many = features.bodies.length > 1;
 
-  for (const row of buildRows(features, entry)) {
+  // Com muitos corpos, listar todos de uma vez é despejo: o MGN9 tem 22, e
+  // achar o que está selecionado exige rolar. Por padrão só ele aparece.
+  if (many) el.vars.append(bodyPicker(entry, features, focus));
+  const rows = buildRows(features, entry).filter(
+    (row) => !many || state.allBodies || row.body === focus,
+  );
+
+  let currentGroup = null;
+  for (const row of rows) {
     if (row.group !== currentGroup) {
       currentGroup = row.group;
       const title = document.createElement('div');
       title.className = 'var-group';
-      title.textContent = currentGroup;
+      // Com um corpo só na tela, o nome dele já está no cabeçalho.
+      title.textContent =
+        many && !state.allBodies ? currentGroup.split(' · ').slice(1).join(' · ') : currentGroup;
       el.vars.append(title);
     }
 
@@ -1263,6 +1276,48 @@ function renderVars(entry, features) {
     item.addEventListener('pointerdown', () => focusBody(entry, row.body));
     el.vars.append(item);
   }
+}
+
+// Cabeçalho de escolha de corpo, para arquivos com mais de um.
+function bodyPicker(entry, features, focus) {
+  const bar = document.createElement('div');
+  bar.className = 'body-picker';
+
+  const select = document.createElement('select');
+  select.className = 'focus wide';
+  select.innerHTML = features.bodies
+    .map(
+      // O nome vem do CAD e costuma repetir — o Fusion exportou três "Body1"
+      // no MGN9. O número é o que distingue de fato.
+      (body, index) =>
+        `<option value="${index}">${index + 1}. ${escapeHtml(body.name)} · ` +
+        `${body.box.size.join(' × ')} mm</option>`,
+    )
+    .join('');
+  select.value = String(features.bodies.indexOf(focus));
+  select.addEventListener('change', () => {
+    state.solid = Number(select.value);
+    paintFocus(entry);
+    varsRenderedFor = null;
+    updateInfo();
+  });
+
+  const toggle = document.createElement('button');
+  toggle.className = state.allBodies ? 'active' : '';
+  toggle.textContent = 'todos';
+  toggle.title = 'Listar as variáveis de todos os corpos de uma vez';
+  toggle.addEventListener('click', () => {
+    state.allBodies = !state.allBodies;
+    varsRenderedFor = null;
+    updateInfo();
+  });
+
+  const count = document.createElement('span');
+  count.className = 'body-count';
+  count.textContent = `${features.bodies.indexOf(focus) + 1}/${features.bodies.length}`;
+
+  bar.append(select, count, toggle);
+  return bar;
 }
 
 // Campos de uma linha editável. O valor é aplicado ao sair do campo, não a cada
@@ -1358,16 +1413,28 @@ async function commitEdit(entry, features, row, key, value) {
 
 const HIGHLIGHT = 0xffb454;
 
+// Onde desenhar o destaque de um corpo: dentro do grupo dele, para acompanhar
+// o arranjo. Sem corpos, na raiz da peça.
+function highlightHost(entry, body) {
+  const solid = body && entry.solids?.find((s) => s.body === body);
+  return solid?.highlight ?? entry.highlight;
+}
+
 function clearHighlight(entry) {
-  for (const child of [...entry.highlight.children]) {
-    child.geometry?.dispose();
-    child.material?.dispose();
-    entry.highlight.remove(child);
+  const groups = [entry.highlight, ...(entry.solids ?? []).map((s) => s.highlight)];
+  for (const group of groups) {
+    if (!group) continue;
+    for (const child of [...group.children]) {
+      child.geometry?.dispose();
+      child.material?.dispose();
+      group.remove(child);
+    }
   }
 }
 
 function showHighlight(entry, features, target) {
   clearHighlight(entry);
+  const bodyOf = (hole) => features.bodies.find((b) => b.holes.includes(hole));
 
   if (target.kind === 'holes') {
     // depthTest desligado para o furo aparecer mesmo estando dentro do material.
@@ -1392,7 +1459,7 @@ function showHighlight(entry, features, target) {
       mesh.quaternion.setFromUnitVectors(up, axis);
       mesh.position.set(...hole.center);
       mesh.renderOrder = 2;
-      entry.highlight.add(mesh);
+      highlightHost(entry, bodyOf(hole)).add(mesh);
     }
   }
 
@@ -1416,7 +1483,7 @@ function showHighlight(entry, features, target) {
       new THREE.LineBasicMaterial({ color: HIGHLIGHT, depthTest: false }),
     );
     line.renderOrder = 2;
-    entry.highlight.add(line);
+    highlightHost(entry, body).add(line);
   }
 }
 
@@ -1544,7 +1611,7 @@ function showStationPlane(entry) {
     axis === 2 ? station : (base.min[2] + base.max[2]) / 2,
   );
   plane.renderOrder = 2;
-  entry.highlight.add(plane);
+  highlightHost(entry, focusedSolid(entry)?.body).add(plane);
 }
 
 function refreshStretchPanel(entry, features) {

@@ -103,6 +103,11 @@ FUROS AVULSOS
   Ø [4,1]
 ```
 
+Num arquivo com vários corpos o painel mostra só o corpo selecionado, com um
+cabeçalho para trocar — o MGN9 tem 22 corpos e 316 variáveis, e listar tudo de
+uma vez não é uma tabela de parâmetros. O botão **todos** lista o arquivo
+inteiro quando for isso que você quer.
+
 Um padrão tem quatro variáveis; um grupo de furos avulsos tem o diâmetro, e
 mudá-lo vale para os furos daquele diâmetro naquele corpo — que é o que a linha
 diz. Editar uma dimensão em **Geral** estira a peça naquele eixo, um estiramento
