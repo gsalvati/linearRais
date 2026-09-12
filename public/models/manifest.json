@@ -1,0 +1,302 @@
+[
+  {
+    "slug": "circular-mechanism-circular-bearing-base",
+    "label": "circular bearing base",
+    "group": "Circular_mechanism",
+    "source": "Circular_mechanism/circular_bearing_base.step",
+    "file": "circular-mechanism-circular-bearing-base.glb",
+    "bytes": 205436,
+    "sourceBytes": 203807,
+    "triangles": 6664,
+    "size": [
+      106.49,
+      152.6,
+      18.1
+    ],
+    "center": [
+      178.499,
+      135.876,
+      -1.6
+    ]
+  },
+  {
+    "slug": "circular-mechanism-circular-bearing-block",
+    "label": "circular bearing block",
+    "group": "Circular_mechanism",
+    "source": "Circular_mechanism/circular_bearing_block.step",
+    "file": "circular-mechanism-circular-bearing-block.glb",
+    "bytes": 852780,
+    "sourceBytes": 2205553,
+    "triangles": 22930,
+    "size": [
+      102,
+      102,
+      12
+    ],
+    "center": [
+      0,
+      70,
+      4
+    ]
+  },
+  {
+    "slug": "circular-mechanism-cover",
+    "label": "cover",
+    "group": "Circular_mechanism",
+    "source": "Circular_mechanism/cover.step",
+    "file": "circular-mechanism-cover.glb",
+    "bytes": 125612,
+    "sourceBytes": 215310,
+    "triangles": 3656,
+    "size": [
+      133.71,
+      179.48,
+      43.3
+    ],
+    "center": [
+      178.499,
+      144.214,
+      -63.85
+    ]
+  },
+  {
+    "slug": "circular-mechanism-main-base",
+    "label": "main base",
+    "group": "Circular_mechanism",
+    "source": "Circular_mechanism/main_base.step",
+    "file": "circular-mechanism-main-base.glb",
+    "bytes": 246492,
+    "sourceBytes": 281847,
+    "triangles": 6892,
+    "size": [
+      133.32,
+      178.3,
+      23.8
+    ],
+    "center": [
+      178.499,
+      144.626,
+      -82.7
+    ]
+  },
+  {
+    "slug": "linear-mechanism-1-block-rod-8mm",
+    "label": "block rod 8mm",
+    "group": "Linear_mechanism_1",
+    "source": "Linear_mechanism_1/block_rod_8mm.step",
+    "file": "linear-mechanism-1-block-rod-8mm.glb",
+    "bytes": 165172,
+    "sourceBytes": 306362,
+    "triangles": 4528,
+    "size": [
+      68.49,
+      30,
+      19.16
+    ],
+    "center": [
+      -25.001,
+      65,
+      4.669
+    ]
+  },
+  {
+    "slug": "linear-mechanism-2-base",
+    "label": "Base",
+    "group": "Linear_mechanism_2",
+    "source": "Linear_mechanism_2/Base.step",
+    "file": "linear-mechanism-2-base.glb",
+    "bytes": 175000,
+    "sourceBytes": 198262,
+    "triangles": 5222,
+    "size": [
+      41.3,
+      237.4,
+      22.2
+    ],
+    "center": [
+      -136.45,
+      107.4,
+      0.4
+    ]
+  },
+  {
+    "slug": "linear-mechanism-2-coupling-tool",
+    "label": "Coupling tool",
+    "group": "Linear_mechanism_2",
+    "source": "Linear_mechanism_2/Coupling_tool.step",
+    "file": "linear-mechanism-2-coupling-tool.glb",
+    "bytes": 82220,
+    "sourceBytes": 157905,
+    "triangles": 2148,
+    "size": [
+      25,
+      30,
+      36.49
+    ],
+    "center": [
+      -194.1,
+      19,
+      -7.755
+    ]
+  },
+  {
+    "slug": "linear-mechanism-2-cover",
+    "label": "Cover",
+    "group": "Linear_mechanism_2",
+    "source": "Linear_mechanism_2/Cover.step",
+    "file": "linear-mechanism-2-cover.glb",
+    "bytes": 153220,
+    "sourceBytes": 262102,
+    "triangles": 4162,
+    "size": [
+      46.7,
+      240,
+      27.2
+    ],
+    "center": [
+      -136.45,
+      107.4,
+      -47.1
+    ]
+  },
+  {
+    "slug": "linear-mechanism-2-petg-rail",
+    "label": "PETG rail",
+    "group": "Linear_mechanism_2",
+    "source": "Linear_mechanism_2/PETG_rail.step",
+    "file": "linear-mechanism-2-petg-rail.glb",
+    "bytes": 79400,
+    "sourceBytes": 65225,
+    "triangles": 2484,
+    "size": [
+      21.6,
+      178,
+      11.5
+    ],
+    "center": [
+      -140,
+      89,
+      39.75
+    ]
+  },
+  {
+    "slug": "linear-mechanism-2-ptfe-block",
+    "label": "PTFE block",
+    "group": "Linear_mechanism_2",
+    "source": "Linear_mechanism_2/PTFE_block.step",
+    "file": "linear-mechanism-2-ptfe-block.glb",
+    "bytes": 39164,
+    "sourceBytes": 36835,
+    "triangles": 1032,
+    "size": [
+      14,
+      30,
+      8.8
+    ],
+    "center": [
+      -140,
+      80,
+      43.1
+    ]
+  },
+  {
+    "slug": "longer-rails-petg-rail-method-1-block",
+    "label": "Block",
+    "group": "Longer_rails / PETG_rail_(method_1)",
+    "source": "Longer_rails/PETG_rail_(method_1)/Block.step",
+    "file": "longer-rails-petg-rail-method-1-block.glb",
+    "bytes": 84888,
+    "sourceBytes": 121816,
+    "triangles": 2652,
+    "size": [
+      13.6,
+      40,
+      8.8
+    ],
+    "center": [
+      -152.2,
+      340,
+      61.3
+    ]
+  },
+  {
+    "slug": "longer-rails-petg-rail-method-1-linear-rail",
+    "label": "Linear rail",
+    "group": "Longer_rails / PETG_rail_(method_1)",
+    "source": "Longer_rails/PETG_rail_(method_1)/Linear_rail.step",
+    "file": "longer-rails-petg-rail-method-1-linear-rail.glb",
+    "bytes": 141116,
+    "sourceBytes": 272596,
+    "triangles": 4240,
+    "size": [
+      22,
+      250,
+      11.5
+    ],
+    "center": [
+      -123,
+      125,
+      39.75
+    ]
+  },
+  {
+    "slug": "longer-rails-ptfe-rail-method-2-petg-block",
+    "label": "PETG block",
+    "group": "Longer_rails / PTFE_rail_(method_2)",
+    "source": "Longer_rails/PTFE_rail_(method_2)/PETG_block.step",
+    "file": "longer-rails-ptfe-rail-method-2-petg-block.glb",
+    "bytes": 46132,
+    "sourceBytes": 89145,
+    "triangles": 1234,
+    "size": [
+      12,
+      30,
+      7.15
+    ],
+    "center": [
+      41.614,
+      -24.649,
+      3.72
+    ]
+  },
+  {
+    "slug": "longer-rails-ptfe-rail-method-2-ptfe-rail-support",
+    "label": "PTFE rail support",
+    "group": "Longer_rails / PTFE_rail_(method_2)",
+    "source": "Longer_rails/PTFE_rail_(method_2)/PTFE_rail_support.step",
+    "file": "longer-rails-ptfe-rail-method-2-ptfe-rail-support.glb",
+    "bytes": 114912,
+    "sourceBytes": 95333,
+    "triangles": 3832,
+    "size": [
+      20,
+      170,
+      10
+    ],
+    "center": [
+      41.614,
+      115,
+      0.795
+    ]
+  },
+  {
+    "slug": "mgn9-petg-petg-linear-rails-mgn9-v3",
+    "label": "PETG linear rails MGN9 v3",
+    "group": "MGN9_PETG",
+    "source": "MGN9_PETG/PETG_linear_rails_MGN9 v3.step",
+    "file": "mgn9-petg-petg-linear-rails-mgn9-v3.glb",
+    "bytes": 1142900,
+    "sourceBytes": 1193401,
+    "triangles": 34110,
+    "size": [
+      159.37,
+      251,
+      20.03
+    ],
+    "center": [
+      34.693,
+      125.5,
+      10.014
+    ]
+  }
+]
