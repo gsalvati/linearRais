@@ -1,0 +1,79 @@
+# Decisões e caminhos em aberto
+
+## Por que não há parametrização vinda do arquivo
+
+Os `.step` são B-rep AP214 sem nenhuma intenção de projeto: zero `DIMENSIONAL_SIZE`,
+`DIMENSIONAL_LOCATION`, `SHAPE_ASPECT` ou `PARAMETER_VALUE`. São sólidos "burros" —
+o Fusion exporta o resultado, nunca a receita.
+
+O `Tutorial/Tutorial_PETG_linear_rail.f3d` é um zip que *contém* a árvore de features
+(`DcSketchMetaType`, `DcExtrudeFeatureMetaType`, `DcFilletEdgeFeatureMetaType`,
+`DcChamferFeatureMetaType`), mas comprimida em zstd num grafo de objetos proprietário
+da Autodesk chaveado por GUIDs. Descomprimido, não há uma única string legível de nome
+de parâmetro — o autor usou cotas de sketch sem criar parâmetros de usuário. Reverter
+esse formato não é caminho.
+
+Conclusão: a parametrização tem que ser **reconstruída a partir da geometria**, e é o
+que `tools/inspect-step.mjs` faz.
+
+## Requisito que orienta as escolhas
+
+O usuário sobe **qualquer** STEP e o sistema apresenta variáveis editáveis: dimensões,
+quantidade de furos, distância entre furos, distância do primeiro — redimensionando
+partes da peça **sem distorcê-la**.
+
+## O que foi descartado
+
+**Re-modelar as peças como código paramétrico** (Replicad, build123d, CadQuery).
+Entregaria parametrização perfeita, mas só funciona para um catálogo conhecido:
+não há como re-modelar automaticamente um STEP arbitrário recém-enviado. Morreu
+quando o requisito passou a ser "qualquer arquivo".
+
+## Caminhos para aplicar a edição de volta na peça
+
+A leitura das variáveis é independente destes três — vale para qualquer um.
+
+### 1. Edição na malha — EM CONSTRUÇÃO
+
+Estiramento prismático (mover só os vértices além de uma estação de corte) para
+redimensionar sem distorcer, e booleana de malha (`manifold-3d`, ~1 MB de WASM)
+para mexer em furos.
+
+- A favor: leve, roda no visualizador atual, resposta imediata, nada sai da máquina.
+- Contra: saída só em STL. Furo novo vira polígono de N lados, não cilindro.
+  Quem sobe STEP não recebe STEP de volta.
+
+### 2. Edição no B-rep com OpenCascade completo — FUTURO
+
+`opencascade.js`, ~35 MB de WASM, com a API de topologia. `BRepAlgoAPI_Defeaturing`
+remove um furo e cicatriza a superfície vizinha; booleana exata recorta os novos;
+estiramento vira cortar em duas estações, transladar e refundir.
+
+- A favor: CAD de verdade. Furo continua cilindro analítico e o STEP de saída
+  abre no Fusion.
+- Contra: 35 MB antes do primeiro uso, API C++ crua via bindings, booleanas de
+  segundos em peças grandes, maior esforço de implementação dos três.
+
+### 3. Kernel no servidor — FUTURO
+
+FreeCAD/OCCT ou `build123d` em Python num backend.
+
+- A favor: o mais robusto, sem peso no cliente, aguenta peças pesadas, e dá
+  reconhecimento de features melhor que um parser próprio.
+- Contra: deixa de ser 100% no navegador, precisa hospedagem, e os arquivos do
+  usuário passam a sair da máquina dele.
+
+**Gatilho para decidir entre 2 e 3:** quando a saída precisar ser STEP em vez de STL.
+Se STL bastar, o caminho 1 fecha o escopo sozinho.
+
+## Limites conhecidos do reconhecimento
+
+Valem para os três caminhos:
+
+- Só plano, cilindro e cone são reconhecidos. Peça com NURBS tem regiões mudas —
+  `cover.step` e `Linear_rail.step` têm dezenas.
+- Arquivos multi-corpo confundem as medidas de borda: no MGN9 a "distância do
+  primeiro furo" saiu 260 mm porque usou a caixa do arquivo inteiro, que é a chapa
+  com várias peças. Precisa segmentar por corpo antes.
+- Furo atravessando superfície curva é bem mais difícil de reposicionar que num plano.
+- Rosca modelada vira geometria helicoidal que nenhuma heurística entende.
