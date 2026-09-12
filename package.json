@@ -1,0 +1,14 @@
+{
+  "name": "ptfe-petg-viewer",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "convert": "node tools/step2glb.mjs vendor/PTFE-PETG-examples public/models",
+    "start": "node tools/serve.mjs"
+  },
+  "dependencies": {
+    "occt-import-js": "^0.0.23",
+    "three": "^0.180.0"
+  }
+}
