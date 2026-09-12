@@ -179,6 +179,66 @@ for (const [i, hole] of sortedHoles.entries()) {
   if (edges.length) console.log(`             parede mais proxima: ${edges[0]} mm  (todas: ${edges.slice(0, 4).join(', ')})`);
 }
 
+/* ------------------------------------------ padroes lineares de furos */
+
+// Furos de mesmo diametro e mesmo eixo, com centros colineares e passo
+// constante, sao um padrao: viram (quantidade, passo, distancia do primeiro).
+function linearPatterns(list) {
+  const families = new Map();
+  for (const hole of list) {
+    const key = [round(hole.radius * 2, 2), ...hole.axis.map((v) => round(Math.abs(v), 2))].join('|');
+    families.set(key, [...(families.get(key) ?? []), hole]);
+  }
+
+  const found = [];
+  for (const [key, group] of families) {
+    if (group.length < 3) continue;
+
+    // Direcao em que os centros variam: o eixo de maior dispersao.
+    const spread = [0, 1, 2].map((a) => {
+      const values = group.map((h) => h.origin[a]);
+      return Math.max(...values) - Math.min(...values);
+    });
+    const along = spread.indexOf(Math.max(...spread));
+    const perpendicular = [0, 1, 2].filter((a) => a !== along);
+    if (perpendicular.some((a) => spread[a] > 0.05)) continue;   // nao sao colineares
+
+    const stations = group.map((h) => h.origin[along]).sort((a, b) => a - b);
+    const gaps = stations.slice(1).map((v, i) => round(v - stations[i], 2));
+    const pitch = Math.min(...gaps);
+    // Aceita falhas no padrao: todo vao precisa ser multiplo do passo base.
+    if (!gaps.every((g) => Math.abs(g / pitch - Math.round(g / pitch)) < 0.02)) continue;
+
+    const slots = Math.round((stations.at(-1) - stations[0]) / pitch) + 1;
+    found.push({
+      diameter: Number(key.split('|')[0]),
+      direction: 'XYZ'[along],
+      count: group.length,
+      slots,
+      pitch,
+      first: stations[0],
+      last: stations.at(-1),
+      length: round(stations.at(-1) - stations[0], 2),
+    });
+  }
+  return found;
+}
+
+const patterns = linearPatterns(sortedHoles);
+if (patterns.length) {
+  console.log('\n  padroes lineares de furos:');
+  for (const pattern of patterns) {
+    const gaps = pattern.slots - pattern.count;
+    console.log(
+      `    Ø${pattern.diameter} mm · ${pattern.count} furos ao longo de ${pattern.direction}` +
+        ` · passo ${pattern.pitch} mm · extensao ${pattern.length} mm` +
+        (gaps > 0 ? `  (${gaps} estacao(oes) vaga(s) no passo)` : ''),
+    );
+    const edge = round(pattern.first - box['XYZ'.indexOf(pattern.direction)][0], 2);
+    console.log(`             primeiro furo a ${edge} mm da borda`);
+  }
+}
+
 const roundList = [...rounds.values()].sort((a, b) => b.radius - a.radius);
 if (roundList.length) {
   console.log('\n  arredondamentos (cilindros convexos, nao sao furos):');
