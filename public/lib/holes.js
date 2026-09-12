@@ -143,6 +143,10 @@ export function holeSolids(hole, options = {}) {
   const center = [...hole.center];
   if (axisIndex !== null && station !== null) center[axisIndex] = station;
 
+  // As duas folgas se sobrepoem de proposito. Com 48 lados, o `grow` da tampa
+  // ja bastaria para envolver o prisma; com poucos lados, ou com uma tampa
+  // justa, e o `cover` que segura. Tirar qualquer um deles reabre o erro do
+  // genus — test/holes.test.mjs pega, mas so na combinacao certa.
   const cover = 1 / Math.cos(Math.PI / segments);
   const grow = mode === 'plug' ? 0.01 : 0;
   // O corte avanca alem de cada face para nenhuma tampa ficar exatamente

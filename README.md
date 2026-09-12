@@ -137,15 +137,38 @@ tolerâncias, o caminho é o `Tutorial/Tutorial_PETG_linear_rail.f3d` no Fusion.
 As peças são rotacionadas de Z-up (convenção CAD) para Y-up (three.js) e assentadas
 sobre uma grade de 10 mm. Todas as medidas exibidas estão em milímetros.
 
+## Testes
+
+```sh
+npm test
+```
+
+Vinte testes sobre as três camadas. Os que importam são os que prendem
+invariantes, não valores: **tapar um furo remove exatamente uma alça**
+(o genus caiu de 6 para 0 no trilho), **tapar e reabrir no mesmo lugar devolve
+o mesmo volume**, **estirar move só o que está depois do corte e só no eixo
+escolhido**.
+
+Vale saber por quê. A booleana erra em silêncio: quando a tampa cruzava a parede
+tesselada do furo, o volume saía exato e a topologia virava lixo — genus 151 num
+trilho que tem 6. Nenhuma inspeção visual pegaria; só olhar genus e volume
+juntos pega. Repondo a configuração antiga, 5 dos 6 testes de booleana falham.
+
 ## Estrutura
 
 ```
-tools/step2glb.mjs      OpenCascade -> GLB (escreve o container GLB na mão, sem dependências extras)
+tools/step2glb.mjs      OpenCascade -> GLB + sidecar de features, por peça
+tools/inspect-step.mjs  o mesmo reconhecimento, no terminal
 tools/serve.mjs         servidor estático (GLB e WASM não carregam via file://)
-public/app.js           cena, lista de peças, controles, leitura de .step arrastado
-public/models/          .glb gerados + manifest.json
+public/lib/step-features.js  reconhecimento de features no B-rep, por corpo
+public/lib/stretch.js        estiramento prismático
+public/lib/holes.js          booleana de malha sobre manifold-3d
+public/app.js           cena, painéis e ligação de tudo
+public/models/          .glb + .features.json gerados + manifest.json
 public/vendor/three/    three.js r180 (módulo + OrbitControls, GLTFLoader, RoomEnvironment)
 public/vendor/occt/     occt-import-js (OpenCascade em WASM)
+public/vendor/manifold/ manifold-3d (booleana de malha em WASM)
+test/                   node --test sobre as três camadas
 vendor/PTFE-PETG-examples/  cópia do repositório de origem
 ```
 
