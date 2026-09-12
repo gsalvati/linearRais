@@ -4,6 +4,7 @@
 import occtimportjs from 'occt-import-js';
 import fs from 'node:fs';
 import path from 'node:path';
+import { analyzeStep } from '../public/lib/step-features.js';
 
 const SRC = process.argv[2];
 const OUT = process.argv[3];
@@ -167,13 +168,19 @@ for (const file of steps) {
   const slug = rel.replace(/\.(step|stp)$/i, '').replace(/[^a-zA-Z0-9]+/g, '-').replace(/^-|-$/g, '').toLowerCase();
 
   const started = Date.now();
-  const result = occt.ReadStepFile(new Uint8Array(fs.readFileSync(file)), null);
+  const source = fs.readFileSync(file);
+  const result = occt.ReadStepFile(new Uint8Array(source), null);
   if (!result.success || result.meshes.length === 0) {
     console.error(`  FALHOU  ${rel}`);
     continue;
   }
   const { glb, bounds, triangles } = buildGlb(result.meshes);
   fs.writeFileSync(path.join(OUT, `${slug}.glb`), glb);
+
+  // Reconhecimento de features num arquivo ao lado: o visualizador so busca
+  // quando a peca entra em foco, e o manifesto fica pequeno.
+  const features = analyzeStep(source.toString('latin1'));
+  if (features) fs.writeFileSync(path.join(OUT, `${slug}.features.json`), JSON.stringify(features));
 
   const size = [0, 1, 2].map((i) => +(bounds.max[i] - bounds.min[i]).toFixed(2));
   manifest.push({
@@ -185,6 +192,13 @@ for (const file of steps) {
     bytes: glb.length,
     sourceBytes: fs.statSync(file).size,
     triangles,
+    features: features
+      ? {
+          file: `${slug}.features.json`,
+          holes: features.holes.length,
+          patterns: features.patterns.length,
+        }
+      : null,
     size,
     center: [0, 1, 2].map((i) => +((bounds.max[i] + bounds.min[i]) / 2).toFixed(3)),
   });

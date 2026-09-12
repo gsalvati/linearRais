@@ -42,7 +42,52 @@ os `.glb` gerados ficam em `public/models/` junto com um `manifest.json`
 - **PNG** salva a vista atual.
 - Arrastar qualquer `.step` ou `.stp` para a janela abre o arquivo sem passar pela conversão.
 
-## Ajustar dimensões
+## Variáveis reconhecidas
+
+A aba **Variáveis** mostra o que foi possível reconstruir da geometria de qualquer
+`.step` — inclusive um arrastado agora, analisado no próprio navegador:
+
+```
+PADRÕES DE FUROS
+  padrao_3.3_y      6 × Ø3.3
+  passo 46 mm ao longo de Y · bordas 10 / 10 mm
+
+FUROS AVULSOS
+  furo_4.1mm        2 × Ø4.1
+  eixo Y · prof 231,7 mm · parede 2 mm
+
+ESPESSURAS
+  espessura_x_1     3,6 mm
+```
+
+Cada linha tem um nome editável — clique e digite `distancia_furo_borda`,
+`altura_do_perfil`, o que fizer sentido. Os nomes ficam no `localStorage` do
+navegador de quem usa: são anotação pessoal sobre a peça, não algo que volte
+para o arquivo. Passar o mouse numa linha destaca a feature no 3D.
+
+O reconhecimento cobre plano, cilindro e cone. Duas distinções fazem o resultado
+ser confiável: o `same_sense` da face separa cilindro côncavo (furo) de convexo
+(arredondamento), e a normal dos planos é canonizada antes de medir espessura.
+`tools/inspect-step.mjs <arquivo>` imprime o mesmo relatório no terminal.
+
+## Estirar sem distorcer
+
+Escala multiplica tudo: um trilho de 178 para 300 mm levaria o furo Ø4,1 para
+Ø6,9 e o chanfro de 45° deixaria de ser 45°. A aba **Estirar** faz outra coisa —
+escolhida uma estação de corte ao longo de um eixo, só o que está depois dela
+translada em bloco. Para a região atravessada pelo corte, que precisa ser
+prismática, o resultado é exato.
+
+O corte sugerido cai no meio do maior vão livre entre features, para dar a maior
+folga possível dos dois lados. Se você mover o corte para cima de um furo
+transversal, o painel avisa que essa feature seria rasgada — furo paralelo ao
+eixo do estiramento apenas fica mais fundo, e não incomoda.
+
+O trilho de 178 vira 300 mm com perfil, chanfros e diâmetros intactos: o passo
+de 40 mm entre os furos continua 40 mm, e só o vão atravessado pelo corte cresce.
+O STL exportado já sai estirado.
+
+## Ajustar dimensões (escala)
 
 O painel inferior direito edita a peça em foco (quando há várias carregadas, um seletor
 escolhe qual). Digite a medida desejada em mm em qualquer eixo:

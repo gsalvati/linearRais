@@ -22,7 +22,13 @@
       <p class="src">Printabot &middot; <a href="https://github.com/Printabot/PTFE-PETG-examples/" target="_blank" rel="noreferrer">PTFE-PETG-examples</a></p>
     </header>
 
-    <div id="parts" class="parts"></div>
+    <div class="tabs" role="tablist">
+      <button data-tab="parts" class="active" role="tab">Peças</button>
+      <button data-tab="vars" role="tab">Variáveis</button>
+    </div>
+
+    <div id="parts" class="parts" role="tabpanel"></div>
+    <div id="vars" class="vars" role="tabpanel" hidden></div>
 
     <div class="drop-hint" id="drop-hint">
       <strong>Arraste um .step aqui</strong>
@@ -70,13 +76,36 @@
         <select id="focus" class="focus" hidden aria-label="Peça a editar"></select>
       </div>
 
-      <div class="dims">
-        <label><span>Largura X</span><input type="text" inputmode="decimal" data-axis="0" /><em>mm</em></label>
-        <label><span>Altura Z</span><input type="text" inputmode="decimal" data-axis="1" /><em>mm</em></label>
-        <label><span>Profund. Y</span><input type="text" inputmode="decimal" data-axis="2" /><em>mm</em></label>
+      <div class="tabs small" role="tablist">
+        <button data-edit="scale" class="active" role="tab" title="Multiplica tudo, inclusive furos">Escala</button>
+        <button data-edit="stretch" role="tab" title="Alonga sem distorcer furos nem chanfros">Estirar</button>
       </div>
 
-      <label class="lock" title="Desmarque para esticar um eixo só. Escala não é paramétrica: furos, folgas e encaixes mudam junto."><input type="checkbox" id="uniform" checked /> Manter proporção <b id="scale-pct">100%</b></label>
+      <div data-panel="scale">
+        <div class="dims">
+          <label><span>Largura X</span><input type="text" inputmode="decimal" data-axis="0" /><em>mm</em></label>
+          <label><span>Altura Z</span><input type="text" inputmode="decimal" data-axis="1" /><em>mm</em></label>
+          <label><span>Profund. Y</span><input type="text" inputmode="decimal" data-axis="2" /><em>mm</em></label>
+        </div>
+        <label class="lock" title="Desmarque para esticar um eixo só. Escala não é paramétrica: furos, folgas e encaixes mudam junto."><input type="checkbox" id="uniform" checked /> Manter proporção <b id="scale-pct">100%</b></label>
+      </div>
+
+      <div data-panel="stretch" hidden>
+        <div class="axis-pick" role="group" aria-label="Eixo do estiramento">
+          <span>Eixo</span>
+          <button data-stretch-axis="0">X</button>
+          <button data-stretch-axis="1">Y</button>
+          <button data-stretch-axis="2">Z</button>
+        </div>
+
+        <div class="dims">
+          <label><span>Comprimento</span><input type="text" inputmode="decimal" id="stretch-length" /><em>mm</em></label>
+          <label><span>Corte em</span><input type="text" inputmode="decimal" id="stretch-station" /><em>mm</em></label>
+        </div>
+
+        <input type="range" id="stretch-slider" class="slider" min="0" max="100" step="0.5" />
+        <p class="hint" id="stretch-hint"></p>
+      </div>
 
       <dl class="info-rows"></dl>
 

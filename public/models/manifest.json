@@ -8,6 +8,11 @@
     "bytes": 205436,
     "sourceBytes": 203807,
     "triangles": 6664,
+    "features": {
+      "file": "circular-mechanism-circular-bearing-base.features.json",
+      "holes": 31,
+      "patterns": 0
+    },
     "size": [
       106.49,
       152.6,
@@ -28,6 +33,11 @@
     "bytes": 852780,
     "sourceBytes": 2205553,
     "triangles": 22930,
+    "features": {
+      "file": "circular-mechanism-circular-bearing-block.features.json",
+      "holes": 333,
+      "patterns": 0
+    },
     "size": [
       102,
       102,
@@ -48,6 +58,11 @@
     "bytes": 125612,
     "sourceBytes": 215310,
     "triangles": 3656,
+    "features": {
+      "file": "circular-mechanism-cover.features.json",
+      "holes": 8,
+      "patterns": 0
+    },
     "size": [
       133.71,
       179.48,
@@ -68,6 +83,11 @@
     "bytes": 246492,
     "sourceBytes": 281847,
     "triangles": 6892,
+    "features": {
+      "file": "circular-mechanism-main-base.features.json",
+      "holes": 41,
+      "patterns": 0
+    },
     "size": [
       133.32,
       178.3,
@@ -88,6 +108,11 @@
     "bytes": 165172,
     "sourceBytes": 306362,
     "triangles": 4528,
+    "features": {
+      "file": "linear-mechanism-1-block-rod-8mm.features.json",
+      "holes": 33,
+      "patterns": 1
+    },
     "size": [
       68.49,
       30,
@@ -108,6 +133,11 @@
     "bytes": 175000,
     "sourceBytes": 198262,
     "triangles": 5222,
+    "features": {
+      "file": "linear-mechanism-2-base.features.json",
+      "holes": 25,
+      "patterns": 0
+    },
     "size": [
       41.3,
       237.4,
@@ -128,6 +158,11 @@
     "bytes": 82220,
     "sourceBytes": 157905,
     "triangles": 2148,
+    "features": {
+      "file": "linear-mechanism-2-coupling-tool.features.json",
+      "holes": 18,
+      "patterns": 1
+    },
     "size": [
       25,
       30,
@@ -148,6 +183,11 @@
     "bytes": 153220,
     "sourceBytes": 262102,
     "triangles": 4162,
+    "features": {
+      "file": "linear-mechanism-2-cover.features.json",
+      "holes": 30,
+      "patterns": 0
+    },
     "size": [
       46.7,
       240,
@@ -168,6 +208,11 @@
     "bytes": 79400,
     "sourceBytes": 65225,
     "triangles": 2484,
+    "features": {
+      "file": "linear-mechanism-2-petg-rail.features.json",
+      "holes": 9,
+      "patterns": 1
+    },
     "size": [
       21.6,
       178,
@@ -188,6 +233,11 @@
     "bytes": 39164,
     "sourceBytes": 36835,
     "triangles": 1032,
+    "features": {
+      "file": "linear-mechanism-2-ptfe-block.features.json",
+      "holes": 4,
+      "patterns": 0
+    },
     "size": [
       14,
       30,
@@ -208,6 +258,11 @@
     "bytes": 84888,
     "sourceBytes": 121816,
     "triangles": 2652,
+    "features": {
+      "file": "longer-rails-petg-rail-method-1-block.features.json",
+      "holes": 4,
+      "patterns": 0
+    },
     "size": [
       13.6,
       40,
@@ -228,6 +283,11 @@
     "bytes": 141116,
     "sourceBytes": 272596,
     "triangles": 4240,
+    "features": {
+      "file": "longer-rails-petg-rail-method-1-linear-rail.features.json",
+      "holes": 10,
+      "patterns": 1
+    },
     "size": [
       22,
       250,
@@ -248,6 +308,11 @@
     "bytes": 46132,
     "sourceBytes": 89145,
     "triangles": 1234,
+    "features": {
+      "file": "longer-rails-ptfe-rail-method-2-petg-block.features.json",
+      "holes": 6,
+      "patterns": 0
+    },
     "size": [
       12,
       30,
@@ -268,6 +333,11 @@
     "bytes": 114912,
     "sourceBytes": 95333,
     "triangles": 3832,
+    "features": {
+      "file": "longer-rails-ptfe-rail-method-2-ptfe-rail-support.features.json",
+      "holes": 4,
+      "patterns": 0
+    },
     "size": [
       20,
       170,
@@ -288,6 +358,11 @@
     "bytes": 1142900,
     "sourceBytes": 1193401,
     "triangles": 34110,
+    "features": {
+      "file": "mgn9-petg-petg-linear-rails-mgn9-v3.features.json",
+      "holes": 140,
+      "patterns": 2
+    },
     "size": [
       159.37,
       251,
