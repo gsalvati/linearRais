@@ -4,7 +4,7 @@
 import occtimportjs from 'occt-import-js';
 import fs from 'node:fs';
 import path from 'node:path';
-import { analyzeStep } from '../public/lib/step-features.js';
+import { analyzeStep, allHoles, allPatterns } from '../public/lib/step-features.js';
 
 const SRC = process.argv[2];
 const OUT = process.argv[3];
@@ -195,8 +195,9 @@ for (const file of steps) {
     features: features
       ? {
           file: `${slug}.features.json`,
-          holes: features.holes.length,
-          patterns: features.patterns.length,
+          bodies: features.bodies.length,
+          holes: allHoles(features).length,
+          patterns: allPatterns(features).length,
         }
       : null,
     size,

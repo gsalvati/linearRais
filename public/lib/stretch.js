@@ -22,17 +22,16 @@ export function stretchPositions(array, axis, station, delta) {
  * Furo paralelo ao eixo do estiramento so fica mais longo — tudo bem. Furo
  * transversal seria rasgado ao meio, entao o intervalo que ele ocupa e proibido.
  */
-export function blockedRanges(features, axis) {
-  if (!features) return [];
+export function blockedRanges(holes, axis) {
   const ranges = [];
 
-  for (const hole of features.holes) {
+  for (const hole of holes ?? []) {
     const parallel = Math.abs(hole.axis[axis]) > 0.99;
     if (parallel) continue;
 
     // O furo transversal ocupa, ao longo do eixo do estiramento, o seu diametro.
     const half = hole.diameter / 2;
-    ranges.push([hole.origin[axis] - half, hole.origin[axis] + half, `furo Ø${hole.diameter}`]);
+    ranges.push([hole.center[axis] - half, hole.center[axis] + half, `furo Ø${hole.diameter}`]);
   }
   return ranges.sort((a, b) => a[0] - b[0]);
 }
@@ -43,8 +42,8 @@ export function blockedRanges(features, axis) {
  * Preferir o vao mais largo deixa a maior folga possivel dos dois lados, que e
  * o que evita rasgar um furo quando a peca e reprocessada.
  */
-export function suggestStation(features, axis, min, max) {
-  const blocked = blockedRanges(features, axis);
+export function suggestStation(holes, axis, min, max) {
+  const blocked = blockedRanges(holes, axis);
   const middle = (min + max) / 2;
   if (blocked.length === 0) return middle;
 
@@ -72,8 +71,8 @@ export function suggestStation(features, axis, min, max) {
 /**
  * O que o corte atravessa nesta estacao, para avisar antes de aplicar.
  */
-export function conflictsAt(features, axis, station) {
-  return blockedRanges(features, axis)
+export function conflictsAt(holes, axis, station) {
+  return blockedRanges(holes, axis)
     .filter(([start, end]) => station > start && station < end)
     .map(([, , label]) => label);
 }

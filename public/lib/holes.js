@@ -121,7 +121,7 @@ export async function rebuildWithHoles(positions, indices, plugs, cuts) {
 /**
  * Solidos que descrevem um furo: o cilindro e, quando existe, o escareado ou
  * chanfro coaxial. Serve tanto para tapar o furo onde ele esta (`mode: 'plug'`)
- * quanto para reabri-lo noutra estacao (`mode: 'cut'`).
+ * quanto para reabri-lo noutra estacao, noutro diametro.
  *
  * Um cilindro de N lados nao e um circulo: o raio inscrito e R·cos(π/N). A
  * tampa precisa envolver o prisma tesselado do furo por fora — se as duas
@@ -129,40 +129,55 @@ export async function rebuildWithHoles(positions, indices, plugs, cuts) {
  * genus +15 por furo tapado, com o volume saindo certo. O corte usa o mesmo
  * ajuste por outro motivo: assim o furo aberto mede o diametro pedido no ponto
  * mais estreito, que e o que importa para passar um parafuso.
- *
- * O corte ainda avanca 0,05 mm alem de cada face, para nenhuma tampa ficar
- * exatamente coplanar com a superficie da peca. A tampa nao avanca: ali um
- * excesso viraria saliencia visivel em vez de sumir dentro do material.
  */
-export function holeSolids(hole, { axisIndex = null, station = null, mode = 'cut', segments = SEGMENTS } = {}) {
+export function holeSolids(hole, options = {}) {
+  const {
+    axisIndex = null,
+    station = null,
+    diameter = hole.diameter,
+    mode = 'cut',
+    segments = SEGMENTS,
+  } = options;
+
   const axis = normalize(hole.axis);
-  const origin = [...hole.origin];
-  if (axisIndex !== null && station !== null) origin[axisIndex] = station;
+  const center = [...hole.center];
+  if (axisIndex !== null && station !== null) center[axisIndex] = station;
 
   const cover = 1 / Math.cos(Math.PI / segments);
   const grow = mode === 'plug' ? 0.01 : 0;
+  // O corte avanca alem de cada face para nenhuma tampa ficar exatamente
+  // coplanar com a superficie da peca. A tampa nao avanca: ali um excesso
+  // viraria saliencia visivel em vez de sumir dentro do material.
   const overshoot = mode === 'plug' ? 0 : 0.05;
-  const at = (t) => origin.map((value, i) => value + axis[i] * t);
-  const middle = (t0, t1) => at((t0 + t1) / 2);
+  const at = (offset) => center.map((value, i) => value + axis[i] * offset);
+
+  // Mudar o diametro leva o escareado junto: o mesmo deslocamento nos dois
+  // raios mantem o angulo do chanfro e faz a garganta casar com o novo furo.
+  const delta = (diameter - hole.diameter) / 2;
 
   const solids = [
     {
-      radius: (hole.diameter / 2 + grow) * cover,
-      radiusTop: (hole.diameter / 2 + grow) * cover,
+      radius: (diameter / 2 + grow) * cover,
       length: hole.depth + 2 * overshoot,
       axis,
-      center: middle(hole.span[0], hole.span[1]),
+      center,
       segments,
     },
   ];
 
   for (const cone of hole.cones ?? []) {
+    // Estender as duas pontas ao longo da propria inclinacao alonga o trecho
+    // sem mover a superficie do cone: o solido cresce, a geometria nao muda.
+    const slope = (cone.radiusTo - cone.radiusFrom) / (cone.to - cone.from);
+    const from = cone.from - overshoot;
+    const to = cone.to + overshoot;
+
     solids.push({
-      radius: (cone.radiusFrom + grow) * cover,
-      radiusTop: (cone.radiusTo + grow) * cover,
-      length: cone.to - cone.from + (mode === 'plug' ? 0 : overshoot),
+      radius: (cone.radiusFrom - slope * overshoot + delta + grow) * cover,
+      radiusTop: (cone.radiusTo + slope * overshoot + delta + grow) * cover,
+      length: to - from,
       axis,
-      center: middle(cone.from - (mode === 'plug' ? 0 : overshoot), cone.to),
+      center: at((from + to) / 2),
       segments,
     });
   }

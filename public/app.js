@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { analyzeStep } from './lib/step-features.js';
+import { analyzeStep, allHoles, allPatterns, findPattern } from './lib/step-features.js';
 import { stretchPositions, suggestStation, conflictsAt } from './lib/stretch.js';
 import { rebuildWithHoles, holeSolids } from './lib/holes.js';
 import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
@@ -47,6 +47,7 @@ const el = {
   holeCount: document.getElementById('hole-count'),
   holePitch: document.getElementById('hole-pitch'),
   holeEdge: document.getElementById('hole-edge'),
+  holeDiameter: document.getElementById('hole-diameter'),
   holeHint: document.getElementById('hole-hint'),
   overlay: document.getElementById('overlay'),
   toolbar: document.getElementById('toolbar'),
@@ -120,6 +121,7 @@ function instantiate(template, color) {
     // A geometria vem do template e e compartilhada; o material e por instancia.
     node.material = new THREE.MeshStandardMaterial({ color, metalness: 0.04, roughness: 0.55 });
     node.material.wireframe = state.show.wireframe;
+    sourceOf(node);
     meshes.push(node);
 
     const line = new THREE.LineSegments(
@@ -161,23 +163,52 @@ function instantiate(template, color) {
     baseSize,
     ownGeometry: false,
     stretch: null,
-    // Booleana sempre parte daqui, nunca do resultado anterior: encadear
-    // edicoes sobre malha ja editada acumula erro e lixo topologico.
-    source:
-      meshes.length === 1
-        ? {
-            positions: Float32Array.from(meshes[0].geometry.attributes.position.array),
-            indices: Uint32Array.from(meshes[0].geometry.index.array),
-          }
-        : null,
     holeEdit: null,
   };
 }
 
-// Troca a geometria da peca depois de uma booleana e reancora o estiramento.
-function setGeometry(entry, positions, indices) {
-  const mesh = entry.meshes[0];
-  const line = entry.edges[0];
+// Booleana sempre parte daqui, nunca do resultado anterior: encadear edicoes
+// sobre malha ja editada acumula erro e lixo topologico.
+function sourceOf(mesh) {
+  if (!mesh.userData.source) {
+    mesh.userData.source = {
+      positions: Float32Array.from(mesh.geometry.attributes.position.array),
+      indices: Uint32Array.from(mesh.geometry.index.array),
+    };
+  }
+  return mesh.userData.source;
+}
+
+// Cada corpo do .step vira uma malha no glTF, mas as duas listas nao vem na
+// mesma ordem — o pareamento e pela caixa, que e o que as duas tem em comum.
+function meshForBody(entry, body) {
+  if (entry.meshes.length === 1) return entry.meshes[0];
+
+  const target = [0, 1, 2].map((a) => (body.box.min[a] + body.box.max[a]) / 2);
+  let best = null;
+  let bestDistance = Infinity;
+
+  for (const mesh of entry.meshes) {
+    if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
+    const box = mesh.geometry.boundingBox;
+    const distance = Math.hypot(
+      ...[0, 1, 2].map((a) => (box.min.getComponent(a) + box.max.getComponent(a)) / 2 - target[a]),
+    );
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      best = mesh;
+    }
+  }
+  // Um milimetro de tolerancia: corpos distintos ficam muito mais longe que isso.
+  return bestDistance < 1 ? best : null;
+}
+
+// Troca a geometria de uma malha depois de uma booleana e reancora o estiramento.
+function setMeshGeometry(entry, mesh, positions, indices) {
+  // As outras malhas da peca precisam sair do template antes, senao um
+  // estiramento posterior escreveria por cima da geometria compartilhada.
+  ownGeometry(entry);
+  const line = mesh.children.find((child) => child.isLineSegments);
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
@@ -187,15 +218,16 @@ function setGeometry(entry, positions, indices) {
   const creased = toCreasedNormals(geometry, THREE.MathUtils.degToRad(35));
   geometry.dispose();
 
-  if (entry.ownGeometry) mesh.geometry.dispose();
+  mesh.geometry.dispose();
   mesh.geometry = creased;
   mesh.userData.pristine = Float32Array.from(creased.attributes.position.array);
 
-  line.geometry.dispose();
-  line.geometry = new THREE.EdgesGeometry(creased, 22);
-  line.userData.pristine = Float32Array.from(line.geometry.attributes.position.array);
+  if (line) {
+    line.geometry.dispose();
+    line.geometry = new THREE.EdgesGeometry(creased, 22);
+    line.userData.pristine = Float32Array.from(line.geometry.attributes.position.array);
+  }
 
-  entry.ownGeometry = true;
 }
 
 // A geometria vem compartilhada do template. Antes de deformar, a instancia
@@ -488,6 +520,23 @@ function updateInfo() {
 // foco evita que uma resposta atrasada pinte o painel de outra peca.
 let varsRenderedFor = null;
 
+// O .step pode ser uma montagem: cada corpo definido no seu proprio sistema e
+// posicionado por uma ITEM_DEFINED_TRANSFORMATION. O OpenCascade aplica essas
+// transformacoes ao tesselar; o leitor de features nao. Quando isso acontece as
+// medidas de cada corpo continuam certas, mas as posicoes nao batem com a malha
+// — entao destaque e booleana ficam desligados em vez de apontar para o lugar
+// errado.
+function featuresArePlaced(entry, features) {
+  if (!features) return false;
+  if (entry.placed !== undefined) return entry.placed;
+
+  const bounds = cadBounds(entry);
+  entry.placed = [0, 1, 2].every(
+    (axis) => Math.abs(bounds.max[axis] - bounds.min[axis] - features.box.size[axis]) < 0.5,
+  );
+  return entry.placed;
+}
+
 async function syncFeatures(entry) {
   const features = await featuresFor(entry.part);
   if (focusedEntry() !== entry) return;
@@ -539,20 +588,15 @@ document.getElementById('reset-scale').addEventListener('click', async () => {
   const entry = focusedEntry();
   if (!entry) return;
   const features = featureCache.get(entry.part.slug);
-  const pattern = features?.patterns.find((p) => p.id === entry.holeEdit?.patternId);
+  const found = findPattern(features, entry.holeEdit?.patternId);
 
   entry.scaleNode.scale.set(1, 1, 1);
   if (entry.stretch) entry.stretch.delta = 0;
 
   // Desfaz a booleana voltando o padrao aos parametros do arquivo — como tudo
   // e refeito a partir da geometria original, o resultado e a peca de origem.
-  if (pattern) {
-    entry.holeEdit = {
-      patternId: pattern.id,
-      count: pattern.count,
-      pitch: pattern.pitch,
-      edge: pattern.edgeStart,
-    };
+  if (found) {
+    entry.holeEdit = editFor(found.pattern);
     await applyHoleEdit(entry, features);
   } else if (entry.stretch) {
     applyStretch(entry);
@@ -786,7 +830,9 @@ async function readStepInBrowser(file) {
       group: 'Arquivos arrastados',
       source: file.name,
       triangles,
-      features: features ? { holes: features.holes.length, patterns: features.patterns.length } : null,
+      features: features
+        ? { holes: allHoles(features).length, patterns: allPatterns(features).length }
+        : null,
       size: [size.x, size.y, size.z].map((v) => +v.toFixed(2)),
     };
 
@@ -865,97 +911,111 @@ const AXIS_LABEL = ['X', 'Y', 'Z'];
 
 // Monta as linhas do painel a partir das features, ja agrupadas pelo tipo de
 // coisa que sao — que e como se pensa a peca, nao como o STEP a descreve.
-function buildRows(features, holeEdit = null) {
+function buildRows(analysis, holeEdit = null) {
   const rows = [];
-  const { box } = features;
+  const many = analysis.bodies.length > 1;
+  const prefix = (body, group) => (many ? `${body.name} · ${group}` : group);
 
-  rows.push({ group: 'Geral', id: 'dim-0', fallback: 'largura_x', value: `${fmt(box.size[0])} mm`, detail: 'extensão em X' });
-  rows.push({ group: 'Geral', id: 'dim-1', fallback: 'comprimento_y', value: `${fmt(box.size[1])} mm`, detail: 'extensão em Y' });
-  rows.push({ group: 'Geral', id: 'dim-2', fallback: 'altura_z', value: `${fmt(box.size[2])} mm`, detail: 'extensão em Z' });
-
-  for (const pattern of features.patterns) {
-    // Se o padrao foi refeito, a linha mostra o que vale agora, nao o do arquivo.
-    const edited = holeEdit?.patternId === pattern.id ? holeEdit : null;
-    const count = edited?.count ?? pattern.count;
-    const pitch = edited?.pitch ?? pattern.pitch;
-    const edge = edited?.edge ?? pattern.edgeStart;
-    const vacant = edited ? 0 : pattern.slots - pattern.count;
-    const changed =
-      edited &&
-      (count !== pattern.count || pitch !== pattern.pitch || edge !== pattern.edgeStart);
-
-    rows.push({
-      group: 'Padrões de furos',
-      id: pattern.id,
-      fallback: `padrao_${pattern.diameter}_${pattern.direction.toLowerCase()}`,
-      value: `${count} × Ø${pattern.diameter}`,
-      detail:
-        `passo ${fmt(pitch)} mm ao longo de ${pattern.direction} · borda ${fmt(edge)} mm` +
-        (vacant > 0 ? ` · ${vacant} estação(ões) vaga(s)` : '') +
-        (changed ? ` · refeito (era ${pattern.count} × ${fmt(pattern.pitch)} mm)` : ''),
-      highlight: changed ? null : { kind: 'holes', ids: pattern.holeIds },
-    });
-  }
-
-  // Furos fora de padrao entram agrupados por diametro: e assim que se pergunta
-  // "quantos furos de 4 mm tem esta peca", e nao um a um.
-  const byDiameter = new Map();
-  for (const hole of features.holes) {
-    if (hole.patternId) continue;
-    const list = byDiameter.get(hole.diameter) ?? [];
-    list.push(hole);
-    byDiameter.set(hole.diameter, list);
-  }
-
-  for (const [diameter, holes] of [...byDiameter].sort((a, b) => b[0] - a[0])) {
-    const axis = holes[0].axis.findIndex((v) => Math.abs(v) > 0.9);
-    const depth = Math.max(...holes.map((h) => h.depth));
-    const wall = holes.map((h) => h.wall).filter((w) => w !== null).sort((a, b) => a - b)[0];
-    rows.push({
-      group: 'Furos avulsos',
-      id: `dia-${diameter}`,
-      fallback: `furo_${diameter}mm`,
-      value: `${holes.length} × Ø${diameter}`,
-      detail:
-        `eixo ${AXIS_LABEL[axis] ?? 'oblíquo'} · prof ${fmt(depth)} mm` +
-        (wall === undefined ? '' : ` · parede ${fmt(wall)} mm`),
-      highlight: { kind: 'holes', ids: holes.map((h) => h.id) },
-    });
-  }
-
-  for (const [index, family] of features.thicknesses.entries()) {
-    const axis = family.normal.findIndex((v) => Math.abs(v) > 0.9);
-    for (const [gapIndex, gap] of family.gaps.entries()) {
-      if (gap < 0.2) continue;                       // ruido de chanfro
+  for (const body of analysis.bodies) {
+    const { box } = body;
+    for (const [axis, label] of [[0, 'largura_x'], [1, 'comprimento_y'], [2, 'altura_z']]) {
       rows.push({
-        group: 'Espessuras',
-        id: `esp-${index}-${gapIndex}`,
-        fallback: `espessura_${AXIS_LABEL[axis]?.toLowerCase() ?? 'obl'}_${gapIndex + 1}`,
-        value: `${fmt(gap)} mm`,
-        detail: `entre planos normais a ${axis < 0 ? family.normal.join(', ') : AXIS_LABEL[axis]}`,
-        highlight: { kind: 'thickness', family: index, gap: gapIndex },
+        group: prefix(body, 'Geral'),
+        id: `${body.bodyIndex}-dim-${axis}`,
+        fallback: label,
+        value: `${fmt(box.size[axis])} mm`,
+        detail: `extensão em ${AXIS_LABEL[axis]}`,
       });
     }
-  }
 
-  for (const round of features.rounds) {
-    rows.push({
-      group: 'Arredondamentos e chanfros',
-      id: `raio-${round.radius}`,
-      fallback: `raio_${round.radius}mm`,
-      value: `${round.count} × R${round.radius}`,
-      detail: 'cilindro convexo',
-    });
-  }
+    for (const pattern of body.patterns) {
+      // Se o padrao foi refeito, a linha mostra o que vale agora, nao o do arquivo.
+      const edited = holeEdit?.patternId === pattern.id ? holeEdit : null;
+      const count = edited?.count ?? pattern.count;
+      const pitch = edited?.pitch ?? pattern.pitch;
+      const edge = edited?.edge ?? pattern.edgeStart;
+      const diameter = edited?.diameter ?? pattern.diameter;
+      const vacant = edited ? 0 : pattern.slots - pattern.count;
+      const changed =
+        edited &&
+        (count !== pattern.count ||
+          pitch !== pattern.pitch ||
+          edge !== pattern.edgeStart ||
+          diameter !== pattern.diameter);
 
-  for (const chamfer of features.chamfers) {
-    rows.push({
-      group: 'Arredondamentos e chanfros',
-      id: `chanfro-${chamfer.diameter}-${chamfer.angle}`,
-      fallback: `chanfro_${chamfer.angle}deg`,
-      value: `${chamfer.count} × ${chamfer.angle}°`,
-      detail: `Ø${chamfer.diameter} mm`,
-    });
+      rows.push({
+        group: prefix(body, 'Padrões de furos'),
+        id: pattern.id,
+        fallback: `padrao_${pattern.diameter}_${pattern.direction.toLowerCase()}`,
+        value: `${count} × Ø${diameter}`,
+        detail:
+          `passo ${fmt(pitch)} mm ao longo de ${pattern.direction} · borda ${fmt(edge)} mm` +
+          (vacant > 0 ? ` · ${vacant} estação(ões) vaga(s)` : '') +
+          (changed
+            ? ` · refeito (era ${pattern.count} × Ø${pattern.diameter} a ${fmt(pattern.pitch)} mm)`
+            : ''),
+        highlight: changed ? null : { kind: 'holes', ids: pattern.holeIds },
+      });
+    }
+
+    // Furos fora de padrao entram agrupados por diametro: e assim que se pergunta
+    // "quantos furos de 4 mm tem esta peca", e nao um a um.
+    const byDiameter = new Map();
+    for (const hole of body.holes) {
+      if (hole.patternId) continue;
+      byDiameter.set(hole.diameter, [...(byDiameter.get(hole.diameter) ?? []), hole]);
+    }
+
+    for (const [diameter, holes] of [...byDiameter].sort((a, b) => b[0] - a[0])) {
+      const axis = holes[0].axis.findIndex((v) => Math.abs(v) > 0.9);
+      const depth = Math.max(...holes.map((h) => h.depth));
+      const wall = holes.map((h) => h.wall).filter((w) => w !== null).sort((a, b) => a - b)[0];
+      rows.push({
+        group: prefix(body, 'Furos avulsos'),
+        id: `${body.bodyIndex}-dia-${diameter}`,
+        fallback: `furo_${diameter}mm`,
+        value: `${holes.length} × Ø${diameter}`,
+        detail:
+          `eixo ${AXIS_LABEL[axis] ?? 'oblíquo'} · prof ${fmt(depth)} mm` +
+          (wall === undefined ? '' : ` · parede ${fmt(wall)} mm`),
+        highlight: { kind: 'holes', ids: holes.map((h) => h.id) },
+      });
+    }
+
+    for (const [index, family] of body.thicknesses.entries()) {
+      const axis = family.normal.findIndex((v) => Math.abs(v) > 0.9);
+      for (const [gapIndex, gap] of family.gaps.entries()) {
+        if (gap < 0.2) continue;                       // ruido de chanfro
+        rows.push({
+          group: prefix(body, 'Espessuras'),
+          id: `${body.bodyIndex}-esp-${index}-${gapIndex}`,
+          fallback: `espessura_${AXIS_LABEL[axis]?.toLowerCase() ?? 'obl'}_${gapIndex + 1}`,
+          value: `${fmt(gap)} mm`,
+          detail: `entre planos normais a ${axis < 0 ? family.normal.join(', ') : AXIS_LABEL[axis]}`,
+          highlight: { kind: 'thickness', body: body.bodyIndex, family: index, gap: gapIndex },
+        });
+      }
+    }
+
+    for (const round of body.rounds) {
+      rows.push({
+        group: prefix(body, 'Arredondamentos e chanfros'),
+        id: `${body.bodyIndex}-raio-${round.radius}`,
+        fallback: `raio_${round.radius}mm`,
+        value: `${round.count} × R${round.radius}`,
+        detail: 'cilindro convexo',
+      });
+    }
+
+    for (const chamfer of body.chamfers) {
+      rows.push({
+        group: prefix(body, 'Arredondamentos e chanfros'),
+        id: `${body.bodyIndex}-chanfro-${chamfer.diameter}-${chamfer.angle}`,
+        fallback: `chanfro_${chamfer.angle}deg`,
+        value: `${chamfer.count} × ${chamfer.angle}°`,
+        detail: `Ø${chamfer.diameter} mm`,
+      });
+    }
   }
 
   return rows;
@@ -964,11 +1024,22 @@ function buildRows(features, holeEdit = null) {
 function renderVars(entry, features) {
   el.vars.innerHTML = '';
 
-  if (!features) {
+  if (!features?.bodies?.length) {
     el.vars.innerHTML =
       '<p class="empty">Nenhuma feature reconhecida nesta peça.<br />' +
       'O reconhecimento cobre plano, cilindro e cone — superfícies livres ficam mudas.</p>';
     return;
+  }
+
+  const placed = featuresArePlaced(entry, features);
+  if (!placed) {
+    const note = document.createElement('p');
+    note.className = 'empty';
+    note.textContent =
+      'Arquivo de montagem: cada corpo vem no seu próprio sistema de coordenadas. ' +
+      'As medidas abaixo estão certas, mas o destaque no 3D e a edição de furos ficam ' +
+      'desligados porque as posições não batem com a malha.';
+    el.vars.append(note);
   }
 
   const names = savedNames(entry.part.slug);
@@ -1005,7 +1076,7 @@ function renderVars(entry, features) {
     detail.textContent = row.detail;
 
     item.append(name, value, detail);
-    if (row.highlight) {
+    if (row.highlight && placed) {
       item.addEventListener('pointerenter', () => showHighlight(entry, features, row.highlight));
       item.addEventListener('pointerleave', () => clearHighlight(entry));
     }
@@ -1039,8 +1110,9 @@ function showHighlight(entry, features, target) {
     });
     const up = new THREE.Vector3(0, 1, 0);
 
+    const holes = allHoles(features);
     for (const id of target.ids) {
-      const hole = features.holes.find((h) => h.id === id);
+      const hole = holes.find((h) => h.id === id);
       if (!hole) continue;
       const axis = new THREE.Vector3(...hole.axis).normalize();
       const mesh = new THREE.Mesh(
@@ -1048,21 +1120,21 @@ function showHighlight(entry, features, target) {
         material,
       );
       mesh.quaternion.setFromUnitVectors(up, axis);
-      mesh.position
-        .set(...hole.origin)
-        .addScaledVector(axis, (hole.span[0] + hole.span[1]) / 2);
+      mesh.position.set(...hole.center);
       mesh.renderOrder = 2;
       entry.highlight.add(mesh);
     }
   }
 
   if (target.kind === 'thickness') {
-    const family = features.thicknesses[target.family];
+    const body = features.bodies.find((b) => b.bodyIndex === target.body);
+    const family = body?.thicknesses[target.family];
+    if (!family) return;
     const normal = new THREE.Vector3(...family.normal);
     const center = new THREE.Vector3(
-      (features.box.min[0] + features.box.max[0]) / 2,
-      (features.box.min[1] + features.box.max[1]) / 2,
-      (features.box.min[2] + features.box.max[2]) / 2,
+      (body.box.min[0] + body.box.max[0]) / 2,
+      (body.box.min[1] + body.box.max[1]) / 2,
+      (body.box.min[2] + body.box.max[2]) / 2,
     );
     const onPlane = (station) => center.clone().addScaledVector(normal, station - center.dot(normal));
 
@@ -1103,7 +1175,7 @@ function stretchState(entry, features) {
   const longest = [0, 1, 2].reduce((a, b) => (base.max[b] - base.min[b] > base.max[a] - base.min[a] ? b : a));
   entry.stretch = {
     axis: longest,
-    station: suggestStation(features, longest, base.min[longest], base.max[longest]),
+    station: suggestStation(allHoles(features), longest, base.min[longest], base.max[longest]),
     delta: 0,
     base,
   };
@@ -1183,7 +1255,7 @@ function refreshStretchPanel(entry, features) {
   el.stretchSlider.step = Math.max(0.1, (base.max[axis] - base.min[axis]) / 400);
   el.stretchSlider.value = station;
 
-  const conflicts = conflictsAt(features, axis, station);
+  const conflicts = conflictsAt(allHoles(features), axis, station);
   if (conflicts.length) {
     el.stretchHint.className = 'hint warn';
     el.stretchHint.textContent =
@@ -1232,7 +1304,7 @@ for (const button of document.querySelectorAll('[data-stretch-axis]')) {
     const features = featureCache.get(entry.part.slug);
     entry.stretch.axis = axis;
     entry.stretch.station = suggestStation(
-      features, axis, entry.stretch.base.min[axis], entry.stretch.base.max[axis],
+      allHoles(features), axis, entry.stretch.base.min[axis], entry.stretch.base.max[axis],
     );
     applyStretch(entry);
     fitView();
@@ -1269,79 +1341,95 @@ el.stretchSlider.addEventListener('input', () => setStation(Number(el.stretchSli
 
 function holeEditState(entry, features) {
   if (entry.holeEdit) return entry.holeEdit;
-  const pattern = features?.patterns?.[0];
-  if (!pattern) return null;
-  entry.holeEdit = {
-    patternId: pattern.id,
-    count: pattern.count,
-    pitch: pattern.pitch,
-    edge: pattern.edgeStart,
-  };
-  return entry.holeEdit;
+  const pattern = allPatterns(features)[0];
+  return pattern ? (entry.holeEdit = editFor(pattern)) : null;
 }
 
-// Tapa os furos originais e reabre a quantidade pedida no passo pedido. Parte
-// sempre da geometria original: o padrao e descrito pelos parametros, nao pela
-// ultima edicao, entao voltar a 6 furos devolve exatamente os 6 de antes.
+const editFor = (pattern) => ({
+  patternId: pattern.id,
+  count: pattern.count,
+  pitch: pattern.pitch,
+  edge: pattern.edgeStart,
+  diameter: pattern.diameter,
+});
+
+// Tapa os furos originais e reabre a quantidade pedida, no passo e no diametro
+// pedidos. Parte sempre da geometria original: o padrao e descrito pelos
+// parametros, nao pela ultima edicao, entao voltar aos valores do arquivo
+// devolve a peca de origem.
 async function applyHoleEdit(entry, features) {
   const edit = entry.holeEdit;
-  const pattern = features.patterns.find((p) => p.id === edit.patternId);
-  if (!pattern || !entry.source) return;
+  const found = findPattern(features, edit?.patternId);
+  if (!found) return;
+
+  const { body, pattern } = found;
+  const mesh = featuresArePlaced(entry, features) ? meshForBody(entry, body) : null;
+  if (!mesh) return;
+
+  const source = sourceOf(mesh);
+  const untouched =
+    edit.count === pattern.count &&
+    edit.pitch === pattern.pitch &&
+    edit.edge === pattern.edgeStart &&
+    edit.diameter === pattern.diameter;
+
+  const finish = () => {
+    if (entry.stretch) applyStretch(entry);
+    else {
+      recomputeBaseSize(entry);
+      applyLayout();
+    }
+  };
 
   // Com os parametros do arquivo, a booleana seria uma volta inteira para
   // chegar na peca de origem — e chegaria com o dobro de triangulos, porque os
   // furos voltariam com 48 lados no lugar dos que o OpenCascade tesselou.
-  const untouched =
-    edit.count === pattern.count && edit.pitch === pattern.pitch && edit.edge === pattern.edgeStart;
   if (untouched) {
-    setGeometry(entry, Float32Array.from(entry.source.positions), Uint32Array.from(entry.source.indices));
-    entry.part.triangles = entry.source.indices.length / 3;
-    if (entry.stretch) applyStretch(entry);
-    else {
-      recomputeBaseSize(entry);
-      applyLayout();
-    }
+    setMeshGeometry(entry, mesh, Float32Array.from(source.positions), Uint32Array.from(source.indices));
+    entry.part.triangles = totalTriangles(entry);
+    finish();
     return;
   }
 
-  const holes = pattern.holeIds.map((id) => features.holes.find((h) => h.id === id));
+  const holes = pattern.holeIds.map((id) => body.holes.find((h) => h.id === id));
   const plugs = holes.flatMap((hole) => holeSolids(hole, { mode: 'plug' }));
   const cuts = Array.from({ length: edit.count }, (_, index) =>
     holeSolids(holes[0], {
       axisIndex: pattern.axisIndex,
-      station: features.box.min[pattern.axisIndex] + edit.edge + index * edit.pitch,
+      station: body.box.min[pattern.axisIndex] + edit.edge + index * edit.pitch,
+      diameter: edit.diameter,
     }),
   ).flat();
 
   busy(true, `Refazendo ${edit.count} furo(s)…`);
+  entry.holeError = null;
   try {
-    const result = await rebuildWithHoles(entry.source.positions, entry.source.indices, plugs, cuts);
-    setGeometry(entry, result.positions, result.indices);
-    entry.part.triangles = result.indices.length / 3;
-
-    if (entry.stretch) applyStretch(entry);
-    else {
-      recomputeBaseSize(entry);
-      applyLayout();
-    }
+    const result = await rebuildWithHoles(source.positions, source.indices, plugs, cuts);
+    setMeshGeometry(entry, mesh, result.positions, result.indices);
+    entry.part.triangles = totalTriangles(entry);
+    finish();
   } catch (error) {
-    el.holeHint.className = 'hint warn';
-    el.holeHint.textContent = `A booleana falhou: ${error.message}`;
+    // Sem isto o erro some: o refreshHolePanel do updateInfo seguinte reescreve
+    // a dica, e a falha fica invisivel com a peca intacta na tela.
+    console.error('booleana falhou', error);
+    entry.holeError = error.message;
   } finally {
     busy(false);
   }
 }
 
-function refreshHolePanel(entry, features) {
-  const patterns = features?.patterns ?? [];
+function totalTriangles(entry) {
+  // toCreasedNormals devolve geometria sem indice, entao a contagem vem das
+  // posicoes quando o indice nao existe.
+  return entry.meshes.reduce((sum, mesh) => {
+    const { index, attributes } = mesh.geometry;
+    return sum + (index ? index.count : attributes.position.count) / 3;
+  }, 0);
+}
 
-  if (!entry.source) {
-    el.holePattern.hidden = true;
-    el.holeHint.className = 'hint warn';
-    el.holeHint.textContent =
-      'Esta peça tem vários corpos no mesmo arquivo. A booleana precisa de um sólido só.';
-    return;
-  }
+function refreshHolePanel(entry, features) {
+  const patterns = allPatterns(features);
+
   if (patterns.length === 0) {
     el.holePattern.hidden = true;
     el.holeHint.className = 'hint';
@@ -1352,11 +1440,18 @@ function refreshHolePanel(entry, features) {
   }
 
   const edit = holeEditState(entry, features);
-  const pattern = patterns.find((p) => p.id === edit.patternId);
+  const { body, pattern } = findPattern(features, edit.patternId);
+  const many = features.bodies.length > 1;
 
   el.holePattern.hidden = patterns.length < 2;
-  el.holePattern.innerHTML = patterns
-    .map((p) => `<option value="${p.id}">Ø${p.diameter} mm · ${p.count} furos em ${p.direction}</option>`)
+  el.holePattern.innerHTML = features.bodies
+    .flatMap((b) =>
+      b.patterns.map(
+        (p) =>
+          `<option value="${p.id}">${many ? `${escapeHtml(b.name)} · ` : ''}` +
+          `Ø${p.diameter} mm · ${p.count} furos em ${p.direction}</option>`,
+      ),
+    )
     .join('');
   el.holePattern.value = edit.patternId;
 
@@ -1364,29 +1459,52 @@ function refreshHolePanel(entry, features) {
     [el.holeCount, edit.count],
     [el.holePitch, edit.pitch],
     [el.holeEdge, edit.edge],
+    [el.holeDiameter, edit.diameter],
   ];
   for (const [input, value] of fields) {
     if (document.activeElement !== input) input.value = fmt(value);
   }
 
-  const length = features.box.size[pattern.axisIndex];
+  if (!featuresArePlaced(entry, features) || !meshForBody(entry, body)) {
+    el.holeHint.className = 'hint warn';
+    el.holeHint.textContent =
+      'Arquivo de montagem: os corpos vêm posicionados por transformação, que o leitor ' +
+      'de features ainda não aplica. As medidas de cada corpo estão certas, mas a ' +
+      'booleana não sabe onde recortar.';
+    return;
+  }
+
+  if (entry.holeError) {
+    el.holeHint.className = 'hint warn';
+    el.holeHint.textContent = `A booleana falhou: ${entry.holeError}`;
+    return;
+  }
+
+  const length = body.box.size[pattern.axisIndex];
   const extent = (edit.count - 1) * edit.pitch;
   const tail = length - edit.edge - extent;
 
   if (tail < 0) {
     el.holeHint.className = 'hint warn';
     el.holeHint.textContent =
-      `O último furo cai ${fmt(-tail)} mm além da peça, que tem ${fmt(length)} mm em ` +
+      `O último furo cai ${fmt(-tail)} mm além do corpo, que tem ${fmt(length)} mm em ` +
       `${pattern.direction}. Reduza a quantidade, o passo ou a borda.`;
   } else {
     el.holeHint.className = 'hint';
     el.holeHint.textContent =
       `${fmt(edit.edge)} + ${fmt(extent)} + ${fmt(tail)} = ${fmt(length)} mm em ${pattern.direction}. ` +
-      'Aplica ao sair do campo. Chanfro e escareado do furo são refeitos junto.';
+      'Aplica ao sair do campo. Chanfro e escareado acompanham o diâmetro.';
   }
 }
 
-for (const [input, key] of [[el.holeCount, 'count'], [el.holePitch, 'pitch'], [el.holeEdge, 'edge']]) {
+const HOLE_FIELDS = [
+  [el.holeCount, 'count'],
+  [el.holePitch, 'pitch'],
+  [el.holeEdge, 'edge'],
+  [el.holeDiameter, 'diameter'],
+];
+
+for (const [input, key] of HOLE_FIELDS) {
   input.addEventListener('change', async () => {
     const entry = focusedEntry();
     const features = featureCache.get(entry?.part.slug);
@@ -1409,14 +1527,9 @@ for (const [input, key] of [[el.holeCount, 'count'], [el.holePitch, 'pitch'], [e
 el.holePattern.addEventListener('change', () => {
   const entry = focusedEntry();
   const features = featureCache.get(entry?.part.slug);
-  const pattern = features?.patterns.find((p) => p.id === el.holePattern.value);
-  if (!entry || !pattern) return;
-  entry.holeEdit = {
-    patternId: pattern.id,
-    count: pattern.count,
-    pitch: pattern.pitch,
-    edge: pattern.edgeStart,
-  };
+  const found = findPattern(features, el.holePattern.value);
+  if (!entry || !found) return;
+  entry.holeEdit = editFor(found.pattern);
   refreshHolePanel(entry, features);
 });
 

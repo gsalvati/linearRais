@@ -77,11 +77,9 @@ export function analyzeStep(source) {
   };
 
   // Cada ADVANCED_FACE carrega a superficie e os vertices do seu contorno.
-  const faces = [];
-  for (const entity of entities.values()) {
-    if (entity.type !== 'ADVANCED_FACE') continue;
+  const buildFace = (entity) => {
     const surface = ref(entity.args[2]);
-    if (!surface) continue;
+    if (!surface) return null;
 
     const vertices = [];
     for (const bound of refs(entity.args[1])) {
@@ -96,10 +94,60 @@ export function analyzeStep(source) {
         }
       }
     }
-    faces.push({ surface, vertices, sameSense: entity.args[3]?.includes('T') });
+    return { surface, vertices, sameSense: entity.args[3]?.includes('T') };
+  };
+
+  // Um .step pode trazer varias pecas: o MGN9 e uma chapa com 22 corpos. Medir
+  // tudo junto da numeros sem sentido — a borda do primeiro furo saia a 260 mm
+  // porque usava a caixa da chapa inteira. Cada MANIFOLD_SOLID_BREP aponta para
+  // a casca com as faces que lhe pertencem.
+  const owner = new Map();
+  const names = [];
+  for (const entity of entities.values()) {
+    if (entity.type !== 'MANIFOLD_SOLID_BREP') continue;
+    const shell = ref(entity.args[1]);
+    if (!shell) continue;
+    const index = names.length;
+    names.push(entity.args[0].replace(/'/g, '').trim() || `Corpo ${index + 1}`);
+    for (const face of refs(shell.args[1])) owner.set(face, index);
   }
 
-  if (faces.length === 0) return null;
+  const grouped = names.map(() => []);
+  const loose = [];
+  for (const entity of entities.values()) {
+    if (entity.type !== 'ADVANCED_FACE') continue;
+    const face = buildFace(entity);
+    if (!face) continue;
+    const index = owner.get(entity);
+    if (index === undefined) loose.push(face);
+    else grouped[index].push(face);
+  }
+
+  // Sem MANIFOLD_SOLID_BREP (casca aberta, por exemplo) tudo vira um corpo so.
+  if (grouped.length === 0) {
+    if (loose.length === 0) return null;
+    names.push('Corpo 1');
+    grouped.push(loose);
+  } else if (loose.length > 0) {
+    grouped[0].push(...loose);
+  }
+
+  const bodies = grouped
+    .map((faces, index) => (faces.length ? { name: names[index], ...analyzeFaces(faces, index) } : null))
+    .filter(Boolean);
+
+  if (bodies.length === 0) return null;
+
+  const min = [0, 1, 2].map((a) => Math.min(...bodies.map((b) => b.box.min[a])));
+  const max = [0, 1, 2].map((a) => Math.max(...bodies.map((b) => b.box.max[a])));
+
+  return {
+    bodies,
+    faceCount: bodies.reduce((sum, b) => sum + b.faceCount, 0),
+    box: { min, max, size: [0, 1, 2].map((a) => round(max[a] - min[a], 2)) },
+  };
+
+  function analyzeFaces(faces, bodyIndex) {
 
   /* ------------------------------------------------- classifica superficies */
 
@@ -235,20 +283,27 @@ export function analyzeStep(source) {
         .filter((d) => d > 0.01)
         .sort((a, b) => a - b);
 
+      // O ponto medio do furo e a unica posicao com significado geometrico: a
+      // `origin` do STEP e um ponto qualquer sobre o eixo, e dois furos na mesma
+      // reta podem te-la em lugares diferentes — o que fazia o detector de
+      // padrao ver dispersao onde nao havia e descartar o padrao.
+      const middle = (hole.span[0] + hole.span[1]) / 2;
+      const center = hole.origin.map((value, i) => value + hole.axis[i] * middle);
+
       return {
-        id: `furo-${index + 1}`,
+        id: `c${bodyIndex}-furo-${index + 1}`,
         diameter: round(hole.radius * 2, 2),
         axis: hole.axis.map((v) => round(v, 4)),
-        origin: hole.origin.map((v) => round(v, 6)),
-        depth: round(hole.span[1] - hole.span[0], 2),
         // Seis casas, nao tres: estes numeros alimentam a booleana, e um erro de
         // 1 µm na tampa deixa um degrau que a EdgesGeometry desenha como quina.
-        span: hole.span.map((v) => round(v, 6)),
+        center: center.map((v) => round(v, 6)),
+        depth: round(hole.span[1] - hole.span[0], 6),
         wall: walls[0] ?? null,
         walls: walls.slice(0, 4),
+        // Deslocamentos a partir do centro do furo, nao da origem do STEP.
         cones: (hole.cones ?? []).map((cone) => ({
-          from: round(cone.from, 6),
-          to: round(cone.to, 6),
+          from: round(cone.from - middle, 6),
+          to: round(cone.to - middle, 6),
           radiusFrom: round(cone.radiusFrom, 6),
           radiusTo: round(cone.radiusTo, 6),
         })),
@@ -270,20 +325,20 @@ export function analyzeStep(source) {
 
     // Direcao em que os centros variam: o eixo de maior dispersao.
     const spread = [0, 1, 2].map((a) => {
-      const values = group.map((h) => h.origin[a]);
+      const values = group.map((h) => h.center[a]);
       return Math.max(...values) - Math.min(...values);
     });
     const along = spread.indexOf(Math.max(...spread));
     if ([0, 1, 2].some((a) => a !== along && spread[a] > 0.05)) continue;   // nao colineares
 
-    const ordered = [...group].sort((a, b) => a.origin[along] - b.origin[along]);
-    const stations = ordered.map((h) => h.origin[along]);
+    const ordered = [...group].sort((a, b) => a.center[along] - b.center[along]);
+    const stations = ordered.map((h) => h.center[along]);
     const gaps = stations.slice(1).map((v, i) => round(v - stations[i], 2));
     const pitch = Math.min(...gaps);
     // Aceita falhas: todo vao precisa ser multiplo do passo base.
     if (!gaps.every((g) => Math.abs(g / pitch - Math.round(g / pitch)) < 0.02)) continue;
 
-    const id = `padrao-${patterns.length + 1}`;
+    const id = `c${bodyIndex}-padrao-${patterns.length + 1}`;
     for (const hole of ordered) hole.patternId = id;
 
     patterns.push({
@@ -324,7 +379,23 @@ export function analyzeStep(source) {
     return { diameter, angle, count };
   });
 
-  return { faceCount: faces.length, box, thicknesses, holes, patterns, rounds, chamfers };
+  return { bodyIndex, faceCount: faces.length, box, thicknesses, holes, patterns, rounds, chamfers };
+  }
+}
+
+/* ------------------------------------------------------------ acessores */
+
+// As features vem por corpo. Quem so precisa da lista inteira usa isto em vez
+// de repetir o flatMap em cada chamada.
+export const allHoles = (features) => features?.bodies.flatMap((b) => b.holes) ?? [];
+export const allPatterns = (features) => features?.bodies.flatMap((b) => b.patterns) ?? [];
+
+export function findPattern(features, id) {
+  for (const body of features?.bodies ?? []) {
+    const pattern = body.patterns.find((p) => p.id === id);
+    if (pattern) return { body, pattern };
+  }
+  return null;
 }
 
 // Nome legivel por omissao, quando o usuario ainda nao renomeou a variavel.

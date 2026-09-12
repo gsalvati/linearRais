@@ -9,14 +9,22 @@ if (!file) {
   process.exit(1);
 }
 
-const features = analyzeStep(fs.readFileSync(file, 'latin1'));
-if (!features) {
+const analysis = analyzeStep(fs.readFileSync(file, 'latin1'));
+if (!analysis) {
   console.error(`${file}: nenhuma face reconhecida`);
   process.exit(1);
 }
 
 console.log(`\n${file}`);
-console.log(`  ${features.faceCount} faces · caixa ${features.box.size.join(' × ')} mm\n`);
+console.log(
+  `  ${analysis.faceCount} faces · ${analysis.bodies.length} corpo(s) · ` +
+    `caixa ${analysis.box.size.join(' × ')} mm`,
+);
+
+for (const features of analysis.bodies) {
+  console.log(
+    `\n  ── ${features.name} · ${features.faceCount} faces · ${features.box.size.join(' × ')} mm`,
+  );
 
 if (features.thicknesses.length) {
   console.log('  planos paralelos (candidatos a espessura / altura):');
@@ -43,8 +51,10 @@ if (loose.length) {
   console.log('\n  furos avulsos:');
   for (const hole of loose) {
     const axis = ['X', 'Y', 'Z'][hole.axis.findIndex((v) => Math.abs(v) > 0.9)] ?? 'obliquo';
+    const round2 = (v) => Math.round(v * 100) / 100;
     console.log(
-      `    Ø${hole.diameter} mm · eixo ${axis} · prof ${hole.depth} mm · centro (${hole.origin})` +
+      `    Ø${hole.diameter} mm · eixo ${axis} · prof ${round2(hole.depth)} mm · ` +
+        `centro (${hole.center.map(round2)})` +
         (hole.wall === null ? '' : ` · parede ${hole.wall} mm`),
     );
   }
@@ -60,5 +70,6 @@ if (features.chamfers.length) {
   for (const { diameter, angle, count } of features.chamfers) {
     console.log(`    Ø${diameter} mm · ${angle}° × ${count}`);
   }
+}
 }
 console.log();

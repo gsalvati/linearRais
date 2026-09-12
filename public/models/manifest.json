@@ -10,6 +10,7 @@
     "triangles": 6664,
     "features": {
       "file": "circular-mechanism-circular-bearing-base.features.json",
+      "bodies": 1,
       "holes": 31,
       "patterns": 0
     },
@@ -35,6 +36,7 @@
     "triangles": 22930,
     "features": {
       "file": "circular-mechanism-circular-bearing-block.features.json",
+      "bodies": 1,
       "holes": 333,
       "patterns": 0
     },
@@ -60,6 +62,7 @@
     "triangles": 3656,
     "features": {
       "file": "circular-mechanism-cover.features.json",
+      "bodies": 1,
       "holes": 8,
       "patterns": 0
     },
@@ -85,6 +88,7 @@
     "triangles": 6892,
     "features": {
       "file": "circular-mechanism-main-base.features.json",
+      "bodies": 1,
       "holes": 41,
       "patterns": 0
     },
@@ -110,6 +114,7 @@
     "triangles": 4528,
     "features": {
       "file": "linear-mechanism-1-block-rod-8mm.features.json",
+      "bodies": 1,
       "holes": 33,
       "patterns": 1
     },
@@ -135,6 +140,7 @@
     "triangles": 5222,
     "features": {
       "file": "linear-mechanism-2-base.features.json",
+      "bodies": 1,
       "holes": 25,
       "patterns": 0
     },
@@ -160,6 +166,7 @@
     "triangles": 2148,
     "features": {
       "file": "linear-mechanism-2-coupling-tool.features.json",
+      "bodies": 1,
       "holes": 18,
       "patterns": 1
     },
@@ -185,6 +192,7 @@
     "triangles": 4162,
     "features": {
       "file": "linear-mechanism-2-cover.features.json",
+      "bodies": 1,
       "holes": 30,
       "patterns": 0
     },
@@ -210,6 +218,7 @@
     "triangles": 2484,
     "features": {
       "file": "linear-mechanism-2-petg-rail.features.json",
+      "bodies": 1,
       "holes": 9,
       "patterns": 1
     },
@@ -235,6 +244,7 @@
     "triangles": 1032,
     "features": {
       "file": "linear-mechanism-2-ptfe-block.features.json",
+      "bodies": 1,
       "holes": 4,
       "patterns": 0
     },
@@ -260,6 +270,7 @@
     "triangles": 2652,
     "features": {
       "file": "longer-rails-petg-rail-method-1-block.features.json",
+      "bodies": 1,
       "holes": 4,
       "patterns": 0
     },
@@ -285,6 +296,7 @@
     "triangles": 4240,
     "features": {
       "file": "longer-rails-petg-rail-method-1-linear-rail.features.json",
+      "bodies": 1,
       "holes": 10,
       "patterns": 1
     },
@@ -310,6 +322,7 @@
     "triangles": 1234,
     "features": {
       "file": "longer-rails-ptfe-rail-method-2-petg-block.features.json",
+      "bodies": 1,
       "holes": 6,
       "patterns": 0
     },
@@ -335,6 +348,7 @@
     "triangles": 3832,
     "features": {
       "file": "longer-rails-ptfe-rail-method-2-ptfe-rail-support.features.json",
+      "bodies": 1,
       "holes": 4,
       "patterns": 0
     },
@@ -360,8 +374,9 @@
     "triangles": 34110,
     "features": {
       "file": "mgn9-petg-petg-linear-rails-mgn9-v3.features.json",
-      "holes": 140,
-      "patterns": 2
+      "bodies": 22,
+      "holes": 153,
+      "patterns": 8
     },
     "size": [
       159.37,

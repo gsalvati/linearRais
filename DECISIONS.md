@@ -90,8 +90,14 @@ Valem para os três caminhos:
 
 - Só plano, cilindro e cone são reconhecidos. Peça com NURBS tem regiões mudas —
   `cover.step` e `Linear_rail.step` têm dezenas.
-- Arquivos multi-corpo confundem as medidas de borda: no MGN9 a "distância do
-  primeiro furo" saiu 260 mm porque usou a caixa do arquivo inteiro, que é a chapa
-  com várias peças. Precisa segmentar por corpo antes.
+- ~~Arquivos multi-corpo confundem as medidas de borda~~ — resolvido: o
+  analisador segmenta por `MANIFOLD_SOLID_BREP` e mede cada corpo separadamente.
+- **Montagens ainda não são posicionadas.** Um `.step` pode definir cada corpo no
+  seu próprio sistema e colocá-lo por `ITEM_DEFINED_TRANSFORMATION` — o MGN9 tem
+  21 delas. O OpenCascade aplica ao tesselar; o leitor de features não, porque a
+  cadeia passa por entidades complexas (`#N = ( A(...) B(...) )`), que o parser
+  ainda não reconhece. As medidas de cada corpo saem certas no referencial dele,
+  mas as posições não batem com a malha, então destaque no 3D e edição de furos
+  ficam desligados nesses arquivos, com aviso na interface.
 - Furo atravessando superfície curva é bem mais difícil de reposicionar que num plano.
 - Rosca modelada vira geometria helicoidal que nenhuma heurística entende.
