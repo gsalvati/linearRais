@@ -33,11 +33,20 @@ quando o requisito passou a ser "qualquer arquivo".
 
 A leitura das variáveis é independente destes três — vale para qualquer um.
 
-### 1. Edição na malha — EM CONSTRUÇÃO
+### 1. Edição na malha — PARCIALMENTE FEITO
 
 Estiramento prismático (mover só os vértices além de uma estação de corte) para
 redimensionar sem distorcer, e booleana de malha (`manifold-3d`, ~1 MB de WASM)
 para mexer em furos.
+
+Estado na branch `malha/variaveis-e-estiramento`:
+
+- **Feito:** leitura das variáveis (`public/lib/step-features.js`) e estiramento
+  prismático (`public/lib/stretch.js`), com export STL já estirado.
+- **Falta:** a booleana. Hoje a quantidade de furos, o passo e a distância do
+  primeiro são *lidos* e nomeáveis, mas não editáveis — mudar o número de furos
+  ou reposicionar um exige recortar geometria, que é o que a booleana faria.
+  `manifold-3d` é o candidato: robusta, ~1 MB, e suficiente para furo cilíndrico.
 
 - A favor: leve, roda no visualizador atual, resposta imediata, nada sai da máquina.
 - Contra: saída só em STL. Furo novo vira polígono de N lados, não cilindro.
