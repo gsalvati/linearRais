@@ -363,6 +363,8 @@ button.ghost { flex: 1; background: none; }
   font-size: 12px;
 }
 
+.focus.wide { max-width: none; width: 100%; }
+
 .focus {
   max-width: 116px;
   padding: 3px 5px;

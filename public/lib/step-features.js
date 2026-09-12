@@ -135,9 +135,15 @@ export function analyzeStep(source) {
       }
       bucket.set(key, entry);
     } else if (type === 'CONICAL_SURFACE') {
+      const place = placement(args[1]);
       cones.push({
         diameter: round(Number(args[2]) * 2, 2),
         angle: round((Number(args[3]) * 180) / Math.PI, 1),
+        radius: Number(args[2]),
+        slope: Math.tan(Number(args[3])),   // dR/dt ao longo do eixo
+        axis: place.axis,
+        origin: place.origin,
+        vertices: face.vertices,
       });
     } else if (type === 'PLANE') {
       planes.push({ ...placement(args[1]), vertices: face.vertices });
@@ -181,6 +187,44 @@ export function analyzeStep(source) {
 
   /* ------------------------------------------------------------- furos */
 
+  // Um escareado ou chanfro coaxial faz parte do furo. Sem juntar os dois, a
+  // profundidade lida e so a do trecho cilindrico — no trilho, 1,35 mm de um
+  // furo que atravessa 3,1 mm de parede — e quem for reabrir o furo a partir
+  // dessa medida faz um rebaixo cego no lugar de um passante.
+  for (const hole of holeMap.values()) {
+    const axis = hole.axis;
+    hole.cones = [];
+
+    for (const cone of cones) {
+      if (Math.abs(dot(cone.axis, axis)) < 0.999) continue;
+      const offset = sub(cone.origin, hole.origin);
+      const perpendicular = sub(offset, axis.map((c) => c * dot(offset, axis)));
+      if (norm(perpendicular) > 1e-3) continue;
+      if (cone.vertices.length === 0) continue;
+
+      // Extremos do cone, com o raio que ele tem em cada um, no referencial do
+      // furo. O raio varia linearmente ao longo do eixo: R(t) = R0 + t·tan(α).
+      const ends = cone.vertices
+        .map((vertex) => {
+          const local = dot(sub(vertex, cone.origin), cone.axis);
+          const point = cone.origin.map((c, i) => c + cone.axis[i] * local);
+          return { t: dot(sub(point, hole.origin), axis), radius: cone.radius + local * cone.slope };
+        })
+        .sort((a, b) => a.t - b.t);
+      const low = ends[0];
+      const high = ends.at(-1);
+      if (high.t - low.t < 1e-6) continue;
+
+      // So conta como parte do furo se encostar no trecho cilindrico.
+      const touches = low.t <= hole.span[1] + 0.01 && high.t >= hole.span[0] - 0.01;
+      if (!touches) continue;
+
+      hole.cones.push({ from: low.t, to: high.t, radiusFrom: low.radius, radiusTo: high.radius });
+      hole.span[0] = Math.min(hole.span[0], low.t);
+      hole.span[1] = Math.max(hole.span[1], high.t);
+    }
+  }
+
   const holes = [...holeMap.values()]
     .sort((a, b) => b.radius - a.radius)
     .map((hole, index) => {
@@ -195,11 +239,19 @@ export function analyzeStep(source) {
         id: `furo-${index + 1}`,
         diameter: round(hole.radius * 2, 2),
         axis: hole.axis.map((v) => round(v, 4)),
-        origin: hole.origin.map((v) => round(v, 3)),
+        origin: hole.origin.map((v) => round(v, 6)),
         depth: round(hole.span[1] - hole.span[0], 2),
-        span: hole.span.map((v) => round(v, 3)),
+        // Seis casas, nao tres: estes numeros alimentam a booleana, e um erro de
+        // 1 µm na tampa deixa um degrau que a EdgesGeometry desenha como quina.
+        span: hole.span.map((v) => round(v, 6)),
         wall: walls[0] ?? null,
         walls: walls.slice(0, 4),
+        cones: (hole.cones ?? []).map((cone) => ({
+          from: round(cone.from, 6),
+          to: round(cone.to, 6),
+          radiusFrom: round(cone.radiusFrom, 6),
+          radiusTo: round(cone.radiusTo, 6),
+        })),
         patternId: null,
       };
     });

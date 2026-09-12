@@ -33,20 +33,29 @@ quando o requisito passou a ser "qualquer arquivo".
 
 A leitura das variáveis é independente destes três — vale para qualquer um.
 
-### 1. Edição na malha — PARCIALMENTE FEITO
+### 1. Edição na malha — FEITO
 
 Estiramento prismático (mover só os vértices além de uma estação de corte) para
 redimensionar sem distorcer, e booleana de malha (`manifold-3d`, ~1 MB de WASM)
 para mexer em furos.
 
-Estado na branch `malha/variaveis-e-estiramento`:
+Entregue na branch `malha/variaveis-e-estiramento`:
 
-- **Feito:** leitura das variáveis (`public/lib/step-features.js`) e estiramento
-  prismático (`public/lib/stretch.js`), com export STL já estirado.
-- **Falta:** a booleana. Hoje a quantidade de furos, o passo e a distância do
-  primeiro são *lidos* e nomeáveis, mas não editáveis — mudar o número de furos
-  ou reposicionar um exige recortar geometria, que é o que a booleana faria.
-  `manifold-3d` é o candidato: robusta, ~1 MB, e suficiente para furo cilíndrico.
+- Leitura das variáveis — `public/lib/step-features.js`
+- Estiramento prismático — `public/lib/stretch.js`
+- Edição do padrão de furos por booleana — `public/lib/holes.js`, sobre
+  `manifold-3d` (529 kB de WASM)
+- Export STL carregando as três edições
+
+Limites que ficam:
+
+- Saída só em STL. Quem sobe STEP não recebe STEP de volta.
+- O furo refeito é um prisma de 48 lados, não um cilindro analítico.
+- Onde o furo novo encosta no antigo, a costura da região tapada aparece como
+  linha no modo Arestas. A superfície é contínua; é só o traçado.
+- Peças com vários corpos no mesmo arquivo ficam de fora — a booleana precisa
+  de um sólido só.
+- Só padrão linear. Padrão circular ou furo avulso não são editáveis ainda.
 
 - A favor: leve, roda no visualizador atual, resposta imediata, nada sai da máquina.
 - Contra: saída só em STL. Furo novo vira polígono de N lados, não cilindro.

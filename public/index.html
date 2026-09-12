@@ -79,6 +79,7 @@
       <div class="tabs small" role="tablist">
         <button data-edit="scale" class="active" role="tab" title="Multiplica tudo, inclusive furos">Escala</button>
         <button data-edit="stretch" role="tab" title="Alonga sem distorcer furos nem chanfros">Estirar</button>
+        <button data-edit="holes" role="tab" title="Refaz o padrão de furos por booleana de malha">Furos</button>
       </div>
 
       <div data-panel="scale">
@@ -107,10 +108,24 @@
         <p class="hint" id="stretch-hint"></p>
       </div>
 
+      <div data-panel="holes" hidden>
+        <div class="info-head">
+          <select id="hole-pattern" class="focus wide" aria-label="Padrão a editar"></select>
+        </div>
+
+        <div class="dims">
+          <label><span>Quantidade</span><input type="text" inputmode="numeric" id="hole-count" /><em></em></label>
+          <label><span>Passo</span><input type="text" inputmode="decimal" id="hole-pitch" /><em>mm</em></label>
+          <label><span>Borda</span><input type="text" inputmode="decimal" id="hole-edge" /><em>mm</em></label>
+        </div>
+
+        <p class="hint" id="hole-hint"></p>
+      </div>
+
       <dl class="info-rows"></dl>
 
       <div class="info-actions">
-        <button id="reset-scale" class="ghost">Tamanho original</button>
+        <button id="reset-scale" class="ghost" title="Desfaz escala, estiramento e edição de furos">Restaurar</button>
         <button id="export-stl" class="ghost">Exportar STL</button>
       </div>
     </div>

@@ -8,6 +8,7 @@
     "start": "node tools/serve.mjs"
   },
   "dependencies": {
+    "manifold-3d": "^3.5.3",
     "occt-import-js": "^0.0.23",
     "three": "^0.180.0"
   }

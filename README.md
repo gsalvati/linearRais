@@ -87,6 +87,35 @@ O trilho de 178 vira 300 mm com perfil, chanfros e diâmetros intactos: o passo
 de 40 mm entre os furos continua 40 mm, e só o vão atravessado pelo corte cresce.
 O STL exportado já sai estirado.
 
+## Editar o padrão de furos
+
+A aba **Furos** refaz um padrão linear: quantidade, passo e distância do primeiro
+furo à borda. O trilho de 6 furos a cada 46 mm vira 12 a cada 20 mm sem sair do
+navegador.
+
+Quem faz isso é o [manifold-3d](https://github.com/elalish/manifold) (529 kB de
+WASM): tapar um furo é unir a peça com um cilindro do tamanho exato do vazio,
+abrir é subtrair esse cilindro noutro lugar. O escareado coaxial vai junto —
+o furo refeito sai com o mesmo chanfro do original.
+
+Cada edição parte da geometria original, nunca do resultado anterior. Voltar aos
+parâmetros do arquivo devolve a peça de origem, triângulo por triângulo.
+
+Três coisas que valem saber:
+
+- **A malha precisa ser estanque.** A tesselação do OpenCascade duplica vértices
+  na costura entre faces, então `merge()` roda antes de qualquer operação. Sem
+  isso o manifold recusa o sólido.
+- **Um cilindro de N lados não é um círculo.** A tampa tem que envolver o prisma
+  tesselado por fora; se as duas superfícies se cruzarem, cada cruzamento vira
+  uma alça — no trilho isso dava genus 151 com o volume saindo certo.
+- **Onde um furo novo encosta num antigo**, a aresta da região tapada aparece
+  como uma linha fina no modo Arestas. É só o traçado das arestas: a superfície
+  em si é contínua, como dá para ver desligando **Arestas**.
+
+Peças com vários corpos no mesmo arquivo (o `MGN9_PETG` é uma chapa com 22) não
+entram: a booleana precisa de um sólido só.
+
 ## Ajustar dimensões (escala)
 
 O painel inferior direito edita a peça em foco (quando há várias carregadas, um seletor
