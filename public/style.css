@@ -157,6 +157,42 @@ html, body {
   color: var(--muted);
 }
 
+.var-detail.warn { color: #ffb454; }
+
+.var.on { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+.var-fields {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 4px;
+}
+
+.var-fields label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.var-fields input {
+  width: 46px;
+  padding: 2px 4px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: #0f1319;
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.var-fields input:focus { outline: none; border-color: var(--accent); }
+.var-fields em { font-style: normal; font-size: 10px; }
+
 /* ---------- estiramento ---------- */
 
 .axis-pick {

@@ -89,9 +89,29 @@ O STL exportado já sai estirado.
 
 ## Editar o padrão de furos
 
-A aba **Furos** refaz um padrão linear: quantidade, passo e distância do primeiro
-furo à borda. O trilho de 6 furos a cada 46 mm vira 12 a cada 20 mm sem sair do
-navegador.
+As variáveis são editadas no próprio painel, cada uma no seu campo:
+
+```
+PADRÕES DE FUROS
+  padrao_3.3_y                              6 × Ø3.3
+  10 + 230 + 10 = 250 mm em Y
+  Ø [3,3]  qtd [6]  passo [46]  borda [10]
+
+FUROS AVULSOS
+  furo_4.1mm                                2 × Ø4.1
+  eixo Y · prof 231,7 mm · parede 2 mm
+  Ø [4,1]
+```
+
+Um padrão tem quatro variáveis; um grupo de furos avulsos tem o diâmetro, e
+mudá-lo vale para os furos daquele diâmetro naquele corpo — que é o que a linha
+diz. Editar uma dimensão em **Geral** estira a peça naquele eixo, um estiramento
+por eixo, que se compõem. Espessura, canal, arredondamento e chanfro são só
+leitura.
+
+O trilho de 6 furos a cada 46 mm vira 12 a cada 20 mm sem sair do navegador, e o
+painel avisa quando o padrão não cabe: *"o último furo cai 174 mm além dos
+250 mm do corpo"*.
 
 Quem faz isso é o [manifold-3d](https://github.com/elalish/manifold) (529 kB de
 WASM): tapar um furo é unir a peça com um cilindro do tamanho exato do vazio,
