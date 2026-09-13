@@ -95,12 +95,15 @@ As variáveis são editadas no próprio painel, cada uma no seu campo:
 PADRÕES DE FUROS
   padrao_3.3_y                              6 × Ø3.3
   10 + 230 + 10 = 250 mm em Y
-  Ø [3,3]  qtd [6]  passo [46]  borda [10]
+    diâmetro      [   3,3 ] mm
+    quantidade    [     6 ] furos
+    passo         [    46 ] mm
+    borda         [    10 ] mm
 
 FUROS AVULSOS
   furo_4.1mm                                2 × Ø4.1
   eixo Y · prof 231,7 mm · parede 2 mm
-  Ø [4,1]
+    diâmetro      [   4,1 ] mm
 ```
 
 Num arquivo com vários corpos o painel mostra só o corpo selecionado, com um

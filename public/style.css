@@ -188,23 +188,29 @@ html, body {
 
 .var-fields {
   grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-  margin-top: 4px;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 3px 8px;
+  margin-top: 5px;
 }
 
+/* contents: rótulo, campo e unidade caem nas colunas da grade, e as linhas
+   ficam alinhadas entre si como numa tabela. */
 .var-fields label {
-  display: flex;
-  align-items: center;
-  gap: 3px;
-  font-size: 10px;
+  display: contents;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.var-fields label > span {
+  font-size: 10.5px;
   color: var(--muted);
 }
 
 .var-fields input {
-  width: 46px;
-  padding: 2px 4px;
+  width: 62px;
+  padding: 2px 5px;
   border: 1px solid var(--line);
   border-radius: 4px;
   background: #0f1319;
@@ -216,7 +222,12 @@ html, body {
 }
 
 .var-fields input:focus { outline: none; border-color: var(--accent); }
-.var-fields em { font-style: normal; font-size: 10px; }
+.var-fields em {
+  min-width: 26px;
+  font-style: normal;
+  font-size: 10px;
+  color: var(--muted);
+}
 
 /* ---------- estiramento ---------- */
 

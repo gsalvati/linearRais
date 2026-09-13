@@ -1072,7 +1072,12 @@ function buildRows(analysis, entry) {
         detail:
           `extensão em ${AXIS_LABEL[axis]}` +
           (stretched ? ` · estirado de ${fmt(box.size[axis])} mm` : ''),
-        edit: { kind: 'dimension', axis, fields: [{ key: 'length', suffix: 'mm' }] },
+        edit: {
+          kind: 'dimension',
+          axis,
+          // Só a letra do eixo: o detalhe da linha logo acima já diz "extensão em X".
+          fields: [{ key: 'length', label: AXIS_LABEL[axis], suffix: 'mm' }],
+        },
       });
     }
 
@@ -1115,10 +1120,10 @@ function buildRows(analysis, entry) {
           kind: 'pattern',
           patternId: pattern.id,
           fields: [
-            { key: 'diameter', label: 'Ø', value: diameter },
-            { key: 'count', label: 'qtd', value: count, integer: true },
-            { key: 'pitch', label: 'passo', value: pitch },
-            { key: 'edge', label: 'borda', value: edge },
+            { key: 'diameter', label: 'diâmetro', value: diameter, suffix: 'mm' },
+            { key: 'count', label: 'quantidade', value: count, integer: true, suffix: 'furos' },
+            { key: 'pitch', label: 'passo', value: pitch, suffix: 'mm' },
+            { key: 'edge', label: 'borda', value: edge, suffix: 'mm' },
           ],
         },
       });
@@ -1161,7 +1166,7 @@ function buildRows(analysis, entry) {
           : {
               kind: 'holes',
               holeIds: holes.map((h) => h.id),
-              fields: [{ key: 'diameter', label: 'Ø', value: diameter }],
+              fields: [{ key: 'diameter', label: 'diâmetro', value: diameter, suffix: 'mm' }],
             },
       });
     }
@@ -1329,16 +1334,16 @@ function editorFor(entry, features, row) {
 
   const fields =
     row.edit.kind === 'dimension'
-      ? [{ key: 'length', value: dimensionValue(entry, row), suffix: 'mm' }]
+      ? [{ ...row.edit.fields[0], value: dimensionValue(entry, row) }]
       : row.edit.fields;
 
   for (const field of fields) {
+    // `display: contents` no label joga rótulo, campo e unidade direto nas três
+    // colunas da grade, então as linhas se alinham entre si como numa tabela.
     const label = document.createElement('label');
-    if (field.label) {
-      const caption = document.createElement('span');
-      caption.textContent = field.label;
-      label.append(caption);
-    }
+    const caption = document.createElement('span');
+    caption.textContent = field.label ?? '';
+    label.append(caption);
 
     const input = document.createElement('input');
     input.type = 'text';
@@ -1354,12 +1359,9 @@ function editorFor(entry, features, row) {
       await commitEdit(entry, features, row, field.key, parsed);
     });
 
-    label.append(input);
-    if (field.suffix) {
-      const suffix = document.createElement('em');
-      suffix.textContent = field.suffix;
-      label.append(suffix);
-    }
+    const suffix = document.createElement('em');
+    suffix.textContent = field.suffix ?? '';
+    label.append(input, suffix);
     wrap.append(label);
   }
   return wrap;
